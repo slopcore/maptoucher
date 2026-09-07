@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="">
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+
+    /* Sits outside #map so typing (arrow keys) never reaches Leaflet's
+       keyboard handler, and so scrolling the list never zooms the map.
+       Leaflet's own controls stop at z-index 1000. */
+    #search {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1200;
+      width: 300px;
+      max-height: calc(100% - 20px);
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      box-sizing: border-box;
+      background: #fff;
+      border-radius: 5px;
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    #places { overflow-y: auto; }
+    .place { display: flex; gap: 6px; align-items: center; }
+    .place + .place { margin-top: 6px; }
+    .swatch {
+      flex: 0 0 auto;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+    }
+    .place input {
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font: inherit;
+      min-width: 0;
+    }
+    .place .postcode { flex: 1; }
+    .place .minutes { flex: 0 0 62px; width: 62px; }
+    .place.failed input { border-color: #c0392b; }
+    .remove {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #999;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .remove:hover:not(:disabled) { background: #f0f0f0; color: #c0392b; }
+    .remove:disabled { color: #ddd; cursor: default; }
+
+    .actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+    .actions button {
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 4px;
+      font: inherit;
+      cursor: pointer;
+    }
+    #add { background: #eee; color: #333; }
+    #add:hover:not(:disabled) { background: #e0e0e0; }
+    #go { margin-left: auto; background: #3388ff; color: #fff; }
+    #go:hover:not(:disabled) { background: #2b7ae4; }
+    .actions button:disabled { opacity: 0.5; cursor: default; }
+
+    #status { margin-top: 8px; font-size: 12px; color: #666; min-height: 1.4em; }
+    #status.error { color: #c0392b; }
+    #legend {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #666;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    #legend .key {
+      width: 14px;
+      height: 10px;
+      background: rgba(255, 212, 0, 0.55);
+      border: 1px solid #1a1a1a;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="search">
+    <div id="places"></div>
+    <div class="actions">
+      <button id="add" type="button">+ Add place</button>
+      <button id="go" type="button">Go</button>
+    </div>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="legend"><span class="key"></span><span>Reachable from every place</span></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"
+          integrity="sha384-1rzjf0+iuELMhFIrp9iYaamoIVLnUjHj93MbKlIsn5PnIJDXT7ynaE0i6IhYsOOV"
+          crossorigin=""></script>
+  <script>
+    // The public FOSSGIS Valhalla instance caps isochrones at 60 minutes.
+    const MAX_MINUTES = 60;
+    // One colour per place; the list is capped at this many so every place
+    // keeps a distinct colour.
+    const COLOURS = ['#3388ff', '#e6550d', '#31a354', '#756bb1', '#e7298a', '#00868b'];
+    // Nominatim's usage policy is 1 request/second. Valhalla's public instance
+    // has no published rate, so keep a smaller courtesy gap.
+    const GAPS = { nominatim: 1100, valhalla: 400 };
+
+    const map = L.map('map').setView([51.505, -0.09], 13);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | ' +
+                   'Routing by <a href="https://valhalla.openstreetmap.de/">Valhalla</a> (FOSSGIS)'
+    }).addTo(map);
+
+    const placesEl = document.getElementById('places');
+    const addButton = document.getElementById('add');
+    const goButton = document.getElementById('go');
+    const status = document.getElementById('status');
+    const legend = document.getElementById('legend');
+
+    const drawn = [];                 // every layer from the last run
+    const geocodeCache = new Map();   // postcode -> place, reused across runs
+    const lastRequestAt = new Map();  // service -> timestamp, for throttling
+    let busy = false;
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    function setStatus(text, isError) {
+      status.textContent = text;
+      status.classList.toggle('error', Boolean(isError));
+    }
+
+    // Waits only as long as the policy still requires, so a run that hits the
+    // geocode cache spends no time sleeping.
+    async function throttle(service) {
+      const wait = GAPS[service] - (Date.now() - (lastRequestAt.get(service) || 0));
+      if (wait > 0) await sleep(wait);
+      lastRequestAt.set(service, Date.now());
+    }
+
+    // Valhalla and Nominatim both report failures as JSON with a human-readable
+    // message; fall back to the HTTP status when the body isn't what we expect.
+    async function readError(response) {
+      try {
+        const body = await response.json();
+        if (body && body.error) return body.error;
+      } catch (e) { /* not JSON */ }
+      return 'HTTP ' + response.status;
+    }
+
+    async function geocode(postcode) {
+      if (geocodeCache.has(postcode)) return geocodeCache.get(postcode);
+
+      await throttle('nominatim');
+      const url = 'https://nominatim.openstreetmap.org/search' +
+                  '?format=json&limit=1&q=' + encodeURIComponent(postcode);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await readError(response));
+
+      const results = await response.json();
+      if (!results.length) throw new Error('no match for "' + postcode + '"');
+
+      const place = {
+        latlng: [parseFloat(results[0].lat), parseFloat(results[0].lon)],
+        name: results[0].display_name
+      };
+      geocodeCache.set(postcode, place);
+      return place;
+    }
+
+    async function driveTimeArea(latlng, minutes) {
+      await throttle('valhalla');
+      const query = {
+        locations: [{ lat: latlng[0], lon: latlng[1] }],
+        costing: 'auto',
+        contours: [{ time: minutes }],
+        polygons: true
+      };
+      const response = await fetch('https://valhalla1.openstreetmap.de/isochrone?json=' +
+                                   encodeURIComponent(JSON.stringify(query)));
+      if (!response.ok) throw new Error(await readError(response));
+
+      const collection = await response.json();
+      if (!collection.features || !collection.features.length) {
+        throw new Error('no drive-time area returned');
+      }
+      return collection.features[0].geometry;
+    }
+
+    /* ---- the place list ---- */
+
+    function rows() {
+      return Array.from(placesEl.querySelectorAll('.place'));
+    }
+
+    function refreshList() {
+      const all = rows();
+      all.forEach((row, i) => {
+        row.querySelector('.swatch').style.background = COLOURS[i];
+        // Keep at least one row: nothing to remove down to.
+        row.querySelector('.remove').disabled = busy || all.length === 1;
+      });
+      addButton.disabled = busy || all.length >= COLOURS.length;
+    }
+
+    function addPlace(focus) {
+      const row = document.createElement('div');
+      row.className = 'place';
+      row.innerHTML =
+        '<span class="swatch"></span>' +
+        '<input class="postcode" type="text" placeholder="Postcode" ' +
+               'autocomplete="postal-code" aria-label="Postcode">' +
+        '<input class="minutes" type="number" min="1" max="' + MAX_MINUTES + '" ' +
+               'step="1" value="15" aria-label="Drive time in minutes">' +
+        '<button class="remove" type="button" title="Remove place" ' +
+               'aria-label="Remove place">&times;</button>';
+
+      row.querySelectorAll('input').forEach((input) => {
+        input.addEventListener('keydown', submitOnEnter);
+      });
+      row.querySelector('.remove').addEventListener('click', () => {
+        if (busy) return;
+        row.remove();
+        // Colours are assigned by list position, so removing a row remaps every
+        // place after it. Anything already drawn no longer matches the panel.
+        if (drawn.length) {
+          clearMap();
+          setStatus('Place removed — press Go to redraw.');
+        }
+        refreshList();
+      });
+
+      placesEl.appendChild(row);
+      refreshList();
+      if (focus) row.querySelector('.postcode').focus();
+      return row;
+    }
+
+    // A disabled button swallows clicks, but not Enter, so the keydown handler
+    // has to check the in-flight guard itself.
+    function submitOnEnter(event) {
+      if (event.key === 'Enter' && !busy) run();
+    }
+
+    function setBusy(value) {
+      busy = value;
+      goButton.disabled = value;
+      refreshList();
+    }
+
+    /* ---- drawing ---- */
+
+    function clearMap() {
+      drawn.splice(0).forEach((layer) => map.removeLayer(layer));
+      legend.style.display = 'none';
+    }
+
+    function draw(layer) {
+      drawn.push(layer.addTo(map));
+      return layer;
+    }
+
+    // polygon-clipping returns bare MultiPolygon coordinates in [lon, lat];
+    // wrapping them as GeoJSON lets Leaflet do the axis swap.
+    function intersectionLayer(geometries) {
+      const result = polygonClipping.intersection(...geometries.map((g) => g.coordinates));
+      if (!result.length) return null;
+
+      return L.geoJSON(
+        { type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: result }, properties: {} },
+        { style: { color: '#1a1a1a', weight: 2, opacity: 0.9, fillColor: '#ffd400', fillOpacity: 0.55 } }
+      );
+    }
+
+    /* ---- the run ---- */
+
+    function readRows() {
+      return rows().map((row, i) => {
+        const postcode = row.querySelector('.postcode').value.trim();
+        const minutes = row.querySelector('.minutes').valueAsNumber;
+        row.classList.remove('failed');
+        return { row, index: i, postcode, minutes, colour: COLOURS[i] };
+      }).filter((entry) => entry.postcode !== '');   // blank rows are ignored
+    }
+
+    async function run() {
+      const entries = readRows();
+      if (!entries.length) {
+        setStatus('Enter a postcode.', true);
+        return;
+      }
+
+      // `max` on the element is only a hint — nothing enforces it without a
+      // form, so the real check happens here, before we spend any requests.
+      const invalid = entries.find((e) =>
+        !Number.isInteger(e.minutes) || e.minutes < 1 || e.minutes > MAX_MINUTES);
+      if (invalid) {
+        invalid.row.classList.add('failed');
+        setStatus('Minutes must be a whole number from 1 to ' + MAX_MINUTES + '.', true);
+        return;
+      }
+
+      setBusy(true);
+      clearMap();
+
+      const geometries = [];
+      const failures = [];
+      // Built up explicitly: L.CircleMarker has no getBounds(), so the drawn
+      // layers can't all be asked for bounds the same way.
+      const bounds = L.latLngBounds([]);
+
+      try {
+        for (const entry of entries) {
+          const label = entries.length > 1
+            ? 'Place ' + (entry.index + 1) + ' of ' + entries.length + ': '
+            : '';
+          try {
+            setStatus(label + 'looking up ' + entry.postcode + '…');
+            const place = await geocode(entry.postcode);
+
+            setStatus(label + 'calculating ' + entry.minutes + ' min drive time…');
+            const geometry = await driveTimeArea(place.latlng, entry.minutes);
+            geometries.push(geometry);
+
+            const area = draw(L.geoJSON({ type: 'Feature', geometry: geometry, properties: {} }, {
+              style: { color: entry.colour, weight: 2, opacity: 0.9,
+                       fillColor: entry.colour, fillOpacity: 0.12 }
+            }));
+            bounds.extend(area.getBounds());
+            bounds.extend(place.latlng);
+
+            draw(L.circleMarker(place.latlng, {
+              radius: 6, color: '#fff', weight: 2, opacity: 1,
+              fillColor: entry.colour, fillOpacity: 1
+            })).bindPopup(entry.minutes + ' min from ' + place.name);
+          } catch (error) {
+            entry.row.classList.add('failed');
+            failures.push(entry.postcode + ' (' + error.message + ')');
+          }
+        }
+
+        // Only ever show an overlap that covers every place in the list. A
+        // partial one looks identical to the real answer but isn't.
+        let overlap = null;
+        if (geometries.length > 1 && !failures.length) {
+          overlap = intersectionLayer(geometries);
+          if (overlap) {
+            draw(overlap);
+            legend.style.display = 'flex';
+          }
+        }
+
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+
+        if (failures.length) {
+          setStatus((entries.length - failures.length) + ' of ' + entries.length +
+                    ' drawn. Failed: ' + failures.join('; ') +
+                    (entries.length > 1 ? '. No overlap shown.' : ''), true);
+        } else if (geometries.length < 2) {
+          setStatus(entries[0].minutes + ' min drive from ' + entries[0].postcode + '.');
+        } else if (overlap) {
+          setStatus('Overlap of all ' + geometries.length + ' areas shown in yellow.');
+        } else {
+          setStatus('All ' + geometries.length + ' areas drawn, but they do not overlap.');
+        }
+      } catch (error) {
+        // Without this an unexpected throw leaves the status frozen on a
+        // progress message, which reads as "still working" rather than "broke".
+        setStatus('Something went wrong: ' + error.message, true);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    addButton.addEventListener('click', () => addPlace(true));
+    goButton.addEventListener('click', run);
+
+    addPlace(false);
+  </script>
+</body>
+</html>
