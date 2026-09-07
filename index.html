@@ -152,6 +152,9 @@
     const GAPS = { photon: 300, valhalla: 400 };
     const MIN_QUERY = 3;
     const DEBOUNCE_MS = 300;
+    // Bump the version when the stored shape changes; a mismatch is discarded
+    // rather than migrated.
+    const STORAGE_KEY = 'maptoucher.places.v1';
 
     const map = L.map('map').setView([51.505, -0.09], 13);
 
@@ -298,6 +301,7 @@
         input.title = place.label;
         row.classList.remove('failed');
         close();
+        save();
       }
 
       function render(places) {
@@ -341,6 +345,7 @@
         // The text no longer describes the chosen coordinates.
         row._selection = null;
         input.removeAttribute('title');
+        save();
         clearTimeout(timer);
         const query = input.value.trim();
         if (query.length < MIN_QUERY) {
@@ -380,6 +385,63 @@
       input.addEventListener('blur', close);
     }
 
+    /* ---- persistence ---- */
+
+    // Every storage call can throw (private browsing, blocked site data, quota),
+    // and losing the saved list must never break the page.
+    function save() {
+      const places = rows().map((row) => ({
+        text: row.querySelector('.address').value,
+        minutes: row.querySelector('.minutes').value,
+        selection: row._selection
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, places: places }));
+      } catch (e) { /* not persisted this time */ }
+    }
+
+    function validCoords(latlng) {
+      return Array.isArray(latlng) && latlng.length === 2 &&
+             latlng.every((n) => typeof n === 'number' && isFinite(n)) &&
+             Math.abs(latlng[0]) <= 90 && Math.abs(latlng[1]) <= 180;
+    }
+
+    // Stored JSON is editable in devtools and may come from an older build, so
+    // every field is checked. A bad field is dropped, never the whole entry.
+    function clean(entry) {
+      if (!entry || typeof entry !== 'object') return null;
+      const text = typeof entry.text === 'string' ? entry.text.slice(0, 200) : '';
+      if (!text.trim()) return null;
+
+      const minutes = Math.round(Number(entry.minutes));
+      const selection = entry.selection;
+      const usable = selection && typeof selection === 'object' &&
+                     validCoords(selection.latlng) && typeof selection.label === 'string';
+
+      return {
+        text: text,
+        minutes: Number.isFinite(minutes) && minutes >= 1 && minutes <= MAX_MINUTES ? minutes : 15,
+        selection: usable ? {
+          latlng: selection.latlng,
+          label: selection.label,
+          primary: String(selection.primary || selection.label),
+          secondary: String(selection.secondary || '')
+        } : null
+      };
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.places)) return [];
+        return parsed.places.map(clean).filter(Boolean).slice(0, COLOURS.length);
+      } catch (e) {
+        return [];   // corrupt or unreadable: start clean
+      }
+    }
+
     /* ---- the place list ---- */
 
     function rows() {
@@ -396,9 +458,10 @@
         row.querySelectorAll('input').forEach((input) => { input.disabled = busy; });
       });
       addButton.disabled = busy || all.length >= COLOURS.length;
+      save();
     }
 
-    function addPlace(focus) {
+    function addPlace(focus, saved) {
       const id = 'suggestions-' + (++rowSeq);
       const row = document.createElement('div');
       row.className = 'place';
@@ -415,9 +478,21 @@
         '<ul class="suggestions" id="' + id + '" role="listbox" hidden></ul>';
 
       autocomplete(row, row.querySelector('.address'), row.querySelector('.suggestions'));
-      row.querySelector('.minutes').addEventListener('keydown', (event) => {
+      const minutesInput = row.querySelector('.minutes');
+      minutesInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !busy) run();
       });
+      minutesInput.addEventListener('input', save);
+
+      if (saved) {
+        // Assigned directly: dispatching `input` would clear the selection and
+        // fire a debounced lookup for every restored row on page load.
+        const address = row.querySelector('.address');
+        address.value = saved.text;
+        minutesInput.value = saved.minutes;
+        row._selection = saved.selection;
+        if (saved.selection) address.title = saved.selection.label;
+      }
       row.querySelector('.remove').addEventListener('click', () => {
         if (busy) return;
         row.remove();
@@ -498,6 +573,7 @@
       entry.row._selection = places[0];
       entry.input.value = places[0].label;
       entry.input.title = places[0].label;
+      save();
       return places[0];
     }
 
@@ -593,7 +669,15 @@
     addButton.addEventListener('click', () => addPlace(true));
     goButton.addEventListener('click', run);
 
-    addPlace(false);
+    const restored = load();
+    if (restored.length) {
+      restored.forEach((place) => addPlace(false, place));
+      setStatus(restored.length === 1
+        ? 'Restored 1 place — press Go to draw.'
+        : 'Restored ' + restored.length + ' places — press Go to draw.');
+    } else {
+      addPlace(false);
+    }
   </script>
 </body>
 </html>
