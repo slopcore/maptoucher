@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MapToucher</title>
+  <meta name="theme-color" content="#2563eb">
+  <link rel="manifest" href="../manifest.webmanifest">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MapToucher">
+  <!-- Inline so the browser's automatic /favicon.ico probe doesn't 404. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%233388ff'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffffff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #map {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+    }
+
+    /* Blue brand theme applied to map base tiles */
+    .leaflet-tile {
+      filter: brightness(1.03) contrast(1.06) saturate(0.38) sepia(0.22) hue-rotate(185deg);
+    }
+
+    /* Reposition Leaflet's zoom control so it doesn't overlap the top branding */
+    .leaflet-top.leaflet-left {
+      top: 58px;
+      left: 12px;
+    }
+
+    /* ---- Top Branding Bar ---- */
+    #top-branding {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 1100;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 6px 14px 6px 8px;
+      border-radius: 24px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      user-select: none;
+    }
+    .brand-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+    }
+    .brand-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      object-fit: cover;
+    }
+    .brand-about {
+      font-size: 12px;
+      color: #64748b;
+      text-decoration: none;
+      font-weight: 500;
+      padding-left: 8px;
+      border-left: 1px solid #e2e8f0;
+      transition: color 0.15s ease;
+    }
+    .brand-about:hover {
+      color: #2563eb;
+    }
+
+    /* ---- PWA Install Button (Top Right) ---- */
+    #pwa-install-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 1100;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: #2563eb;
+      color: #ffffff;
+      border: 0;
+      border-radius: 20px;
+      padding: 7px 14px;
+      font: 600 13px/1 inherit;
+      box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+    }
+    #pwa-install-btn:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+    #pwa-install-btn:active {
+      transform: translateY(0);
+    }
+
+    /* ---- Install Instructions Modal ---- */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+    .modal-card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 22px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      animation: modalSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalSlideUp {
+      from { opacity: 0; transform: translateY(12px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .modal-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .modal-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      object-fit: cover;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 2px;
+    }
+    .modal-desc {
+      font-size: 12px;
+      color: #64748b;
+      margin: 0;
+    }
+    .modal-close {
+      background: transparent;
+      border: 0;
+      color: #94a3b8;
+      font-size: 22px;
+      line-height: 1;
+      padding: 2px 6px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .modal-close:hover {
+      color: #0f172a;
+      background: #f1f5f9;
+    }
+    .modal-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .modal-step-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #334155;
+      background: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .modal-step-num {
+      width: 22px;
+      height: 22px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .modal-action-btn {
+      width: 100%;
+      background: #2563eb;
+      color: #ffffff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+    .modal-action-btn:hover {
+      background: #1d4ed8;
+    }
+
+    /* ---- Bottom UI Panel (Mobile-Friendly Sheet) ---- */
+    #search {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1200;
+      width: calc(100% - 24px);
+      max-width: 440px;
+      padding: 10px 14px 14px;
+      box-sizing: border-box;
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+      font: 14px/1.4 inherit;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  padding 0.2s ease,
+                  width 0.2s ease,
+                  border-radius 0.2s ease;
+    }
+
+    /* Bottom Sheet Header / Drag Bar */
+    .sheet-header {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      user-select: none;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+      margin-bottom: 10px;
+    }
+    .grab-handle {
+      width: 36px;
+      height: 4px;
+      background: #cbd5e1;
+      border-radius: 2px;
+      margin: 0 auto 6px;
+      transition: background-color 0.15s ease;
+    }
+    .sheet-header:hover .grab-handle {
+      background: #94a3b8;
+    }
+    .sheet-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #search.collapsed .sheet-title-row {
+      justify-content: center;
+    }
+    .sheet-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #334155;
+      white-space: nowrap;
+    }
+    .sheet-summary {
+      font-size: 12px;
+      color: #2563eb;
+      font-weight: 600;
+      background: #eff6ff;
+      padding: 2px 8px;
+      border-radius: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid #dbeafe;
+    }
+
+    /* Collapsed State: Transforms into a compact floating pill */
+    #search.collapsed {
+      padding: 8px 16px;
+      width: auto;
+      max-width: 90vw;
+      border-radius: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+    #search.collapsed .sheet-header {
+      padding-bottom: 0;
+      border-bottom: 0;
+      margin-bottom: 0;
+    }
+    #search.collapsed .grab-handle {
+      display: none;
+    }
+    #search.collapsed #panel-content {
+      display: none;
+    }
+
+    /* Places list */
+    .place { position: relative; display: flex; gap: 6px; align-items: center; }
+    .place + .place { margin-top: 6px; }
+    .swatch {
+      flex: 0 0 auto;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.25);
+    }
+    .place input, .place select {
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font: inherit;
+      min-width: 0;
+      background: #fff;
+    }
+    .place .address { flex: 1; }
+    .place .minutes { flex: 0 0 54px; width: 54px; }
+    .place .mode { flex: 0 0 auto; padding: 6px 4px; }
+    .place.failed input { border-color: #c0392b; }
+    .place input:disabled, .place select:disabled { background: #f7f7f7; color: #999; }
+
+    /* Autocomplete dropdown opens upward into map view */
+    .suggestions {
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 16px;
+      right: 0;
+      z-index: 1300;
+      margin: 0;
+      padding: 4px 0;
+      list-style: none;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.18);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .suggestions[hidden] { display: none; }
+    .suggestions li { padding: 6px 10px; cursor: pointer; }
+    .suggestions li[aria-selected="true"] { background: #eaf2ff; }
+    .suggestions .primary { display: block; font-size: 13px; font-weight: 500; }
+    .suggestions .secondary { display: block; font-size: 11px; color: #888; }
+
+    .remove {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #999;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .remove:hover:not(:disabled) { background: #f0f0f0; color: #c0392b; }
+    .remove:disabled { color: #ddd; cursor: default; }
+
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .actions button {
+      padding: 7px 14px;
+      border: 0;
+      border-radius: 6px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #add { background: #f1f5f9; color: #334155; }
+    #add:hover:not(:disabled) { background: #e2e8f0; }
+    #go { margin-left: auto; background: #2563eb; color: #fff; padding: 7px 18px; }
+    #go:hover:not(:disabled) { background: #1d4ed8; }
+    .actions button:disabled { opacity: 0.5; cursor: default; }
+
+    #status { margin-top: 8px; font-size: 12px; color: #64748b; min-height: 1.4em; }
+    #status.error { color: #dc2626; font-weight: 500; }
+    #legend {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #334155;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+    }
+    #legend .key {
+      width: 14px;
+      height: 10px;
+      background: rgba(255, 212, 0, 0.7);
+      border: 1px solid #1a1a1a;
+      border-radius: 2px;
+    }
+
+    /* Mobile Responsive Optimizations */
+    @media (max-width: 480px) {
+      #search {
+        bottom: 0;
+        left: 0;
+        transform: none;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 18px 18px 0 0;
+        padding: 8px 14px calc(12px + env(safe-area-inset-bottom, 8px));
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+      }
+      #search.collapsed {
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: auto;
+        max-width: 90vw;
+        border-radius: 24px;
+        padding: 8px 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      }
+      .leaflet-top.leaflet-left {
+        top: 54px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Top Branding Bar -->
+  <div id="top-branding">
+    <a href="../" class="brand-link" title="MapToucher Homepage">
+      <img src="../maptoucher-logo.jpeg" alt="MapToucher Logo" class="brand-logo">
+      <span>MapToucher</span>
+    </a>
+    <a href="../" class="brand-about">About</a>
+  </div>
+
+  <!-- PWA Install Button (Top Right) -->
+  <button id="pwa-install-btn" type="button" aria-label="Install MapToucher app" title="Install MapToucher">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+    </svg>
+    <span>Install</span>
+  </button>
+
+  <!-- iOS / Desktop Install Instructions Modal -->
+  <div id="install-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+      <div class="modal-header">
+        <div class="modal-brand">
+          <img src="../icon-192.png" alt="MapToucher Icon" class="modal-logo">
+          <div>
+            <h3 id="modal-title" class="modal-title">Install MapToucher</h3>
+            <p class="modal-desc">Add to your home screen for quick offline access</p>
+          </div>
+        </div>
+        <button id="close-modal-btn" type="button" class="modal-close" aria-label="Close dialog">&times;</button>
+      </div>
+      <div id="modal-instructions" class="modal-steps"></div>
+      <button id="dismiss-modal-btn" type="button" class="modal-action-btn">Got it</button>
+    </div>
+  </div>
+
+  <!-- Bottom UI Sheet -->
+  <div id="search">
+    <div class="sheet-header" id="sheet-header" role="button" tabindex="0" aria-expanded="true" aria-controls="panel-content" title="Toggle controls">
+      <div class="grab-handle"></div>
+      <div class="sheet-title-row">
+        <span class="sheet-title">Places & Times</span>
+        <span class="sheet-summary" id="sheet-summary" style="display: none;"></span>
+      </div>
+    </div>
+
+    <div id="panel-content">
+      <div id="places"></div>
+      <div class="actions">
+        <button id="add" type="button">+ Add place</button>
+        <button id="go" type="button">Go</button>
+      </div>
+      <div id="status" role="status" aria-live="polite"></div>
+      <div id="legend"><span class="key"></span><span>Reachable from every place</span></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"
+          integrity="sha384-1rzjf0+iuELMhFIrp9iYaamoIVLnUjHj93MbKlIsn5PnIJDXT7ynaE0i6IhYsOOV"
+          crossorigin=""></script>
+  <script>
+    // The public FOSSGIS Valhalla instance caps isochrones at 60 minutes, for
+    // every costing model it offers.
+    const MAX_MINUTES = 60;
+    // Valhalla costing models, in the order the picker offers them. The value
+    // goes to the API and into the cache key; the verb goes on screen.
+    const MODES = [
+      { value: 'auto', label: 'Drive', verb: 'drive' },
+      { value: 'pedestrian', label: 'Walk', verb: 'walk' }
+    ];
+    // One colour per place; the list is capped at this many so every place
+    // keeps a distinct colour.
+    const COLOURS = ['#3388ff', '#e6550d', '#31a354', '#756bb1', '#e7298a', '#00868b'];
+    // Courtesy gaps between requests we make in a batch. Typeahead is not
+    // throttled this way — it is debounced and cancelled instead.
+    const GAPS = { photon: 300, valhalla: 400 };
+    const MIN_QUERY = 3;
+    const DEBOUNCE_MS = 300;
+    // Bump the version when the stored shape changes; a mismatch is discarded
+    // rather than migrated.
+    const STORAGE_KEY = 'maptoucher.places.v1';
+    const ISOCHRONE_KEY = 'maptoucher.isochrones.v1';
+    // Drive-time areas are large, and they share the origin's storage quota
+    // with the place list — which fails silently when the quota is full. Both
+    // limits are deliberately small so this cache is always what yields.
+    const ISOCHRONE_MAX = 12;
+    const ISOCHRONE_BUDGET = 500000;   // characters of geometry, across the store
+    // The road network moves slowly; a month-old area is still a fair answer.
+    const ISOCHRONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const GEOCODE_MAX = 120;
+
+    // Anything unrecognised drives: the first mode is the default everywhere.
+    function knownMode(value) {
+      return MODES.some((mode) => mode.value === value) ? value : MODES[0].value;
+    }
+
+    function modeVerb(value) {
+      return MODES.find((mode) => mode.value === knownMode(value)).verb;
+    }
+
+    const map = L.map('map').setView([51.505, -0.09], 13);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | ' +
+                   'Search by <a href="https://photon.komoot.io/">Photon</a> | ' +
+                   'Routing by <a href="https://valhalla.openstreetmap.de/">Valhalla</a> (FOSSGIS)'
+    }).addTo(map);
+
+    const placesEl = document.getElementById('places');
+    const addButton = document.getElementById('add');
+    const goButton = document.getElementById('go');
+    const status = document.getElementById('status');
+    const legend = document.getElementById('legend');
+
+    const searchPanel = document.getElementById('search');
+    const sheetHeader = document.getElementById('sheet-header');
+    const sheetSummary = document.getElementById('sheet-summary');
+
+    function updateSummary() {
+      const activePlaces = rows().filter((r) => r.querySelector('.address').value.trim());
+      const count = activePlaces.length;
+      if (count > 0) {
+        sheetSummary.style.display = 'inline-block';
+        if (legend.style.display === 'flex') {
+          sheetSummary.textContent = count + (count === 1 ? ' place' : ' places') + ' · Overlap shown';
+        } else {
+          sheetSummary.textContent = count + (count === 1 ? ' place' : ' places');
+        }
+      } else {
+        sheetSummary.style.display = 'none';
+      }
+    }
+
+    function setPanelCollapsed(collapsed) {
+      searchPanel.classList.toggle('collapsed', collapsed);
+      sheetHeader.setAttribute('aria-expanded', String(!collapsed));
+      updateSummary();
+    }
+
+    sheetHeader.addEventListener('click', () => {
+      const isCollapsed = searchPanel.classList.contains('collapsed');
+      setPanelCollapsed(!isCollapsed);
+    });
+
+    sheetHeader.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const isCollapsed = searchPanel.classList.contains('collapsed');
+        setPanelCollapsed(!isCollapsed);
+      }
+    });
+
+    /* ---- PWA Service Worker & Install Logic ---- */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('../sw.js').catch(() => {});
+      });
+    }
+
+    const installBtn = document.getElementById('pwa-install-btn');
+    const installModal = document.getElementById('install-modal');
+    const modalInstructions = document.getElementById('modal-instructions');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const dismissModalBtn = document.getElementById('dismiss-modal-btn');
+
+    let deferredPrompt = null;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    function showInstallBtn() {
+      if (!isStandalone) {
+        installBtn.style.display = 'inline-flex';
+      }
+    }
+
+    function hideInstallBtn() {
+      installBtn.style.display = 'none';
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      showInstallBtn();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      hideInstallBtn();
+    });
+
+    if (!isStandalone) {
+      setTimeout(showInstallBtn, 400);
+    }
+
+    function showInstallModal(contentHtml) {
+      modalInstructions.innerHTML = contentHtml;
+      installModal.hidden = false;
+    }
+
+    function closeInstallModal() {
+      installModal.hidden = true;
+    }
+
+    closeModalBtn.addEventListener('click', closeInstallModal);
+    dismissModalBtn.addEventListener('click', closeInstallModal);
+    installModal.addEventListener('click', (e) => {
+      if (e.target === installModal) closeInstallModal();
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          hideInstallBtn();
+        }
+        deferredPrompt = null;
+      } else if (isIOS) {
+        showInstallModal(`
+          <div class="modal-step-item">
+            <span class="modal-step-num">1</span>
+            <span>Tap the <strong>Share</strong> button <svg style="display:inline-block;vertical-align:-2px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> at bottom of Safari</span>
+          </div>
+          <div class="modal-step-item">
+            <span class="modal-step-num">2</span>
+            <span>Scroll down and tap <strong>Add to Home Screen</strong> ➕</span>
+          </div>
+          <div class="modal-step-item">
+            <span class="modal-step-num">3</span>
+            <span>Tap <strong>Add</strong> in the top right</span>
+          </div>
+        `);
+      } else {
+        showInstallModal(`
+          <div class="modal-step-item">
+            <span class="modal-step-num">1</span>
+            <span>Click the <strong>Install</strong> icon in your browser address bar</span>
+          </div>
+          <div class="modal-step-item">
+            <span class="modal-step-num">2</span>
+            <span>Click <strong>Install</strong> to add MapToucher to your device</span>
+          </div>
+        `);
+      }
+    });
+
+    const drawn = [];                 // every layer from the last run
+    const lastRequestAt = new Map();  // service -> timestamp, for throttling
+    let busy = false;
+    let rowSeq = 0;
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    function setStatus(text, isError) {
+      status.textContent = text;
+      status.classList.toggle('error', Boolean(isError));
+    }
+
+    // Waits only as long as the courtesy gap still requires.
+    async function throttle(service) {
+      const wait = GAPS[service] - (Date.now() - (lastRequestAt.get(service) || 0));
+      if (wait > 0) await sleep(wait);
+      lastRequestAt.set(service, Date.now());
+    }
+
+    // Valhalla reports failures as JSON with a human-readable message; fall
+    // back to the HTTP status when the body isn't what we expect.
+    async function readError(response) {
+      try {
+        const body = await response.json();
+        if (body && body.error) return body.error;
+      } catch (e) { /* not JSON */ }
+      return 'HTTP ' + response.status;
+    }
+
+    /* ---- caches ---- */
+
+    // Photon and Valhalla are public instances run as a courtesy, and the
+    // surest way to get blocked is to ask the same question twice. Geocoding
+    // is cached for the session; drive-time areas are kept between visits
+    // because they are what a run really spends.
+    const geocodes = new Map();     // request URL -> places
+    const isochrones = new Map();   // place and minutes -> { at, json }
+
+    // A Map keeps insertion order, so the oldest entry is always first.
+    // Re-inserting on a hit stops anything in use from ageing out.
+    function touch(cache, key, value) {
+      cache.delete(key);
+      cache.set(key, value);
+      return value;
+    }
+
+    function isochroneKey(latlng, minutes, mode) {
+      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|' + mode;
+    }
+
+    function usableGeometry(geometry) {
+      return Boolean(geometry) && typeof geometry === 'object' &&
+             (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') &&
+             Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0;
+    }
+
+    function readIsochrone(key) {
+      const entry = isochrones.get(key);
+      if (!entry) return null;
+      if (Date.now() - entry.at > ISOCHRONE_TTL_MS) {
+        isochrones.delete(key);
+        return null;
+      }
+      // Parsed fresh on every hit: the geometry goes to Leaflet and to
+      // polygon-clipping, and neither promises to leave it alone.
+      let geometry;
+      try {
+        geometry = JSON.parse(entry.json);
+      } catch (e) {
+        geometry = null;
+      }
+      if (!usableGeometry(geometry)) {
+        isochrones.delete(key);   // unusable stored shape: fetch it again
+        return null;
+      }
+      touch(isochrones, key, entry);
+      return geometry;
+    }
+
+    // Guarded on the way in as well as out, so everything in the store is
+    // something a read can use: an entry a read always rejects would hold
+    // budget, be re-deleted every visit, and never be written over.
+    function writeIsochrone(key, geometry) {
+      if (!usableGeometry(geometry)) return;
+      touch(isochrones, key, { at: Date.now(), json: JSON.stringify(geometry) });
+      persistIsochrones();
+    }
+
+    // Sheds oldest-first: down to the cap and the budget, then for as long as
+    // storage keeps refusing what is left.
+    function persistIsochrones() {
+      let size = 0;
+      isochrones.forEach((entry) => { size += entry.json.length; });
+      while (isochrones.size > ISOCHRONE_MAX || size > ISOCHRONE_BUDGET) {
+        const oldest = isochrones.keys().next().value;
+        size -= isochrones.get(oldest).json.length;
+        isochrones.delete(oldest);
+      }
+      // Storage can refuse even what fits the budget, because the place list
+      // shares the quota. Shed from what gets written rather than from what we
+      // hold: a session that can save nothing still asks Valhalla only once.
+      const entries = Array.from(isochrones);
+      while (entries.length) {
+        try {
+          localStorage.setItem(ISOCHRONE_KEY, JSON.stringify({ version: 1, entries: entries }));
+          return;
+        } catch (e) {
+          entries.shift();
+        }
+      }
+      try { localStorage.removeItem(ISOCHRONE_KEY); } catch (e) { /* nothing to clear */ }
+    }
+
+    function storedEntry(entry) {
+      return Array.isArray(entry) && typeof entry[0] === 'string' &&
+             Boolean(entry[1]) && typeof entry[1] === 'object' &&
+             typeof entry[1].json === 'string' &&
+             typeof entry[1].at === 'number' && isFinite(entry[1].at);
+    }
+
+    // Anything unexpected drops the whole store instead of salvaging entries:
+    // re-fetching a few areas costs less than reasoning about a half-trusted
+    // cache, and expiry alone is not corruption.
+    function loadIsochrones() {
+      let parsed = null;
+      try {
+        const raw = localStorage.getItem(ISOCHRONE_KEY);
+        if (!raw) return;
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        parsed = null;
+      }
+
+      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries) ||
+          !parsed.entries.every(storedEntry)) {
+        try { localStorage.removeItem(ISOCHRONE_KEY); } catch (e) { /* nothing to clear */ }
+        return;
+      }
+
+      const now = Date.now();
+      parsed.entries.forEach((entry) => {
+        if (now - entry[1].at <= ISOCHRONE_TTL_MS) isochrones.set(entry[0], entry[1]);
+      });
+      // Expired entries are only dropped from memory above; write the store
+      // back so a visit that spends nothing still reclaims their space.
+      if (isochrones.size < parsed.entries.length) persistIsochrones();
+    }
+
+    /* ---- geocoding (Photon) ---- */
+
+    // Photon is built for typeahead, which Nominatim's usage policy forbids.
+    // It returns coordinates with each suggestion, so picking one needs no
+    // second lookup.
+    function photonUrl(query, limit) {
+      const centre = map.getCenter();
+      return 'https://photon.komoot.io/api/?limit=' + limit +
+             '&lat=' + centre.lat.toFixed(4) + '&lon=' + centre.lng.toFixed(4) +
+             '&q=' + encodeURIComponent(query);
+    }
+
+    // Photon spreads an address over several optional fields; fold them into
+    // one line to show and one to write back into the input.
+    function describe(properties) {
+      const p = properties;
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+      const primary = p.name || street || p.postcode || p.city || p.country || 'Unknown';
+      const rest = [];
+      const push = (value) => {
+        if (value && value !== primary && !rest.includes(value)) rest.push(value);
+      };
+      if (p.name) push(street);
+      [p.postcode, p.city, p.county, p.state, p.country].forEach(push);
+      return { primary: primary, secondary: rest.join(', '),
+               label: [primary].concat(rest).join(', ') };
+    }
+
+    function toPlace(feature) {
+      const described = describe(feature.properties);
+      return {
+        latlng: [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
+        primary: described.primary,
+        secondary: described.secondary,
+        label: described.label
+      };
+    }
+
+    // The URL is the cache key: it already carries the query, the limit and
+    // the map centre we biased towards. Nothing mutates a place, so callers
+    // can share one. An empty result is an answer too, and is cached.
+    async function searchPlaces(query, limit, options) {
+      const settings = options || {};
+      const url = photonUrl(query, limit);
+      if (geocodes.has(url)) return touch(geocodes, url, geocodes.get(url));
+
+      // Only after a miss: a cache hit should cost no wait at all.
+      if (settings.throttled) await throttle('photon');
+      const response = await fetch(url, { signal: settings.signal });
+      if (!response.ok) throw new Error('address lookup failed (HTTP ' + response.status + ')');
+      const collection = await response.json();
+
+      const places = (collection.features || []).map(toPlace);
+      touch(geocodes, url, places);
+      while (geocodes.size > GEOCODE_MAX) geocodes.delete(geocodes.keys().next().value);
+      return places;
+    }
+
+    async function travelTimeArea(latlng, minutes, mode) {
+      const key = isochroneKey(latlng, minutes, mode);
+      const cached = readIsochrone(key);
+      if (cached) return cached;
+
+      await throttle('valhalla');
+      const query = {
+        locations: [{ lat: latlng[0], lon: latlng[1] }],
+        costing: mode,
+        contours: [{ time: minutes }],
+        polygons: true
+      };
+      const response = await fetch('https://valhalla1.openstreetmap.de/isochrone?json=' +
+                                   encodeURIComponent(JSON.stringify(query)));
+      if (!response.ok) throw new Error(await readError(response));
+
+      const collection = await response.json();
+      if (!collection.features || !collection.features.length) {
+        throw new Error('no drive-time area returned');
+      }
+
+      const geometry = collection.features[0].geometry;
+      writeIsochrone(key, geometry);
+      return geometry;
+    }
+
+    /* ---- the address combobox ---- */
+
+    function autocomplete(row, input, list) {
+      let results = [];
+      let highlight = -1;
+      let timer = null;
+      let controller = null;
+
+      function close() {
+        list.hidden = true;
+        list.innerHTML = '';
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+        results = [];
+        highlight = -1;
+      }
+
+      function paint() {
+        Array.from(list.children).forEach((li, i) => {
+          li.setAttribute('aria-selected', String(i === highlight));
+        });
+        if (highlight >= 0) {
+          input.setAttribute('aria-activedescendant', list.children[highlight].id);
+          list.children[highlight].scrollIntoView({ block: 'nearest' });
+        } else {
+          input.removeAttribute('aria-activedescendant');
+        }
+      }
+
+      function choose(index) {
+        const place = results[index];
+        if (!place) return;
+        row._selection = place;
+        input.value = place.label;
+        input.title = place.label;
+        row.classList.remove('failed');
+        close();
+        save();
+        updateSummary();
+      }
+
+      function render(places) {
+        list.innerHTML = '';
+        places.forEach((place, i) => {
+          const li = document.createElement('li');
+          li.id = list.id + '-opt-' + i;
+          li.setAttribute('role', 'option');
+          li.setAttribute('aria-selected', 'false');
+          li.innerHTML = '<span class="primary"></span><span class="secondary"></span>';
+          li.querySelector('.primary').textContent = place.primary;
+          li.querySelector('.secondary').textContent = place.secondary;
+          // mousedown, not click: blur fires first and would close the list.
+          li.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            choose(i);
+          });
+          list.appendChild(li);
+        });
+        results = places;
+        highlight = -1;
+        list.hidden = places.length === 0;
+        input.setAttribute('aria-expanded', String(places.length > 0));
+        paint();
+      }
+
+      async function lookup(query) {
+        if (controller) controller.abort();
+        controller = new AbortController();
+        try {
+          const places = await searchPlaces(query, 6, { signal: controller.signal });
+          // A late response must not reopen a list the user has moved past.
+          if (input.value.trim() !== query) return;
+          render(places);
+        } catch (error) {
+          if (error.name !== 'AbortError') close();
+        }
+      }
+
+      input.addEventListener('input', () => {
+        // The text no longer describes the chosen coordinates.
+        row._selection = null;
+        input.removeAttribute('title');
+        save();
+        updateSummary();
+        clearTimeout(timer);
+        const query = input.value.trim();
+        if (query.length < MIN_QUERY) {
+          if (controller) controller.abort();
+          close();
+          return;
+        }
+        timer = setTimeout(() => lookup(query), DEBOUNCE_MS);
+      });
+
+      input.addEventListener('keydown', (event) => {
+        const open = !list.hidden && results.length > 0;
+
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          if (!open) return;
+          event.preventDefault();
+          const step = event.key === 'ArrowDown' ? 1 : -1;
+          highlight = (highlight + step + results.length) % results.length;
+          paint();
+          return;
+        }
+        if (event.key === 'Escape') {
+          if (open) { event.preventDefault(); close(); }
+          return;
+        }
+        if (event.key === 'Enter') {
+          // One Enter must not both pick a suggestion and start the run.
+          if (open && highlight >= 0) {
+            event.preventDefault();
+            choose(highlight);
+            return;
+          }
+          if (!busy) run();
+        }
+      });
+
+      input.addEventListener('blur', close);
+    }
+
+    /* ---- persistence ---- */
+
+    // Every storage call can throw (private browsing, blocked site data, quota),
+    // and losing the saved list must never break the page.
+    function save() {
+      const places = rows().map((row) => ({
+        text: row.querySelector('.address').value,
+        minutes: row.querySelector('.minutes').value,
+        mode: row.querySelector('.mode').value,
+        selection: row._selection
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, places: places }));
+      } catch (e) { /* not persisted this time */ }
+    }
+
+    function validCoords(latlng) {
+      return Array.isArray(latlng) && latlng.length === 2 &&
+             latlng.every((n) => typeof n === 'number' && isFinite(n)) &&
+             Math.abs(latlng[0]) <= 90 && Math.abs(latlng[1]) <= 180;
+    }
+
+    // Stored JSON is editable in devtools and may come from an older build, so
+    // every field is checked. A bad field is dropped, never the whole entry.
+    function clean(entry) {
+      if (!entry || typeof entry !== 'object') return null;
+      const text = typeof entry.text === 'string' ? entry.text.slice(0, 200) : '';
+      if (!text.trim()) return null;
+
+      const minutes = Math.round(Number(entry.minutes));
+      const selection = entry.selection;
+      const usable = selection && typeof selection === 'object' &&
+                     validCoords(selection.latlng) && typeof selection.label === 'string';
+
+      return {
+        text: text,
+        minutes: Number.isFinite(minutes) && minutes >= 1 && minutes <= MAX_MINUTES ? minutes : 15,
+        // Lists saved before there was a picker have no mode, which is not a
+        // shape this can't read: an absent one drives, as it always did.
+        mode: knownMode(entry.mode),
+        selection: usable ? {
+          latlng: selection.latlng,
+          label: selection.label,
+          primary: String(selection.primary || selection.label),
+          secondary: String(selection.secondary || '')
+        } : null
+      };
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.places)) return [];
+        return parsed.places.map(clean).filter(Boolean).slice(0, COLOURS.length);
+      } catch (e) {
+        return [];   // corrupt or unreadable: start clean
+      }
+    }
+
+    /* ---- the place list ---- */
+
+    function rows() {
+      return Array.from(placesEl.querySelectorAll('.place'));
+    }
+
+    function refreshList() {
+      const all = rows();
+      all.forEach((row, i) => {
+        row.querySelector('.swatch').style.background = COLOURS[i];
+        // Keep at least one row: nothing to remove down to.
+        row.querySelector('.remove').disabled = busy || all.length === 1;
+        // Editing mid-run would invalidate a selection the loop is still using.
+        row.querySelectorAll('input, select').forEach((field) => { field.disabled = busy; });
+      });
+      addButton.disabled = busy || all.length >= COLOURS.length;
+      save();
+      updateSummary();
+    }
+
+    function addPlace(focus, saved) {
+      const id = 'suggestions-' + (++rowSeq);
+      const row = document.createElement('div');
+      row.className = 'place';
+      row._selection = null;
+      row.innerHTML =
+        '<span class="swatch"></span>' +
+        '<input class="address" type="text" placeholder="Address or postcode" ' +
+               'autocomplete="off" role="combobox" aria-autocomplete="list" ' +
+               'aria-expanded="false" aria-controls="' + id + '" aria-label="Address or postcode">' +
+        '<input class="minutes" type="number" min="1" max="' + MAX_MINUTES + '" ' +
+               'step="1" value="15" aria-label="Travel time in minutes">' +
+        '<select class="mode" aria-label="Travel mode">' +
+          MODES.map((mode) => '<option value="' + mode.value + '">' + mode.label + '</option>').join('') +
+        '</select>' +
+        '<button class="remove" type="button" title="Remove place" ' +
+               'aria-label="Remove place">&times;</button>' +
+        '<ul class="suggestions" id="' + id + '" role="listbox" hidden></ul>';
+
+      autocomplete(row, row.querySelector('.address'), row.querySelector('.suggestions'));
+      const minutesInput = row.querySelector('.minutes');
+      minutesInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !busy) run();
+      });
+      minutesInput.addEventListener('input', save);
+      const modeInput = row.querySelector('.mode');
+      modeInput.addEventListener('change', save);
+
+      if (saved) {
+        // Assigned directly: dispatching `input` would clear the selection and
+        // fire a debounced lookup for every restored row on page load.
+        const address = row.querySelector('.address');
+        address.value = saved.text;
+        minutesInput.value = saved.minutes;
+        modeInput.value = saved.mode;
+        row._selection = saved.selection;
+        if (saved.selection) address.title = saved.selection.label;
+      }
+      row.querySelector('.remove').addEventListener('click', () => {
+        if (busy) return;
+        row.remove();
+        // Colours are assigned by list position, so removing a row remaps every
+        // place after it. Anything already drawn no longer matches the panel.
+        if (drawn.length) {
+          clearMap();
+          setStatus('Place removed — press Go to redraw.');
+        }
+        refreshList();
+      });
+
+      placesEl.appendChild(row);
+      refreshList();
+      if (focus) row.querySelector('.address').focus();
+      return row;
+    }
+
+    function setBusy(value) {
+      busy = value;
+      goButton.disabled = value;
+      refreshList();
+    }
+
+    /* ---- drawing ---- */
+
+    function clearMap() {
+      drawn.splice(0).forEach((layer) => map.removeLayer(layer));
+      legend.style.display = 'none';
+      updateSummary();
+    }
+
+    function draw(layer) {
+      drawn.push(layer.addTo(map));
+      return layer;
+    }
+
+    // polygon-clipping returns bare MultiPolygon coordinates in [lon, lat];
+    // wrapping them as GeoJSON lets Leaflet do the axis swap.
+    function intersectionLayer(geometries) {
+      const result = polygonClipping.intersection(...geometries.map((g) => g.coordinates));
+      if (!result.length) return null;
+
+      return L.geoJSON(
+        { type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: result }, properties: {} },
+        { style: { color: '#1a1a1a', weight: 2, opacity: 0.9, fillColor: '#ffd400', fillOpacity: 0.55 } }
+      );
+    }
+
+    /* ---- the run ---- */
+
+    function readRows() {
+      return rows().map((row, i) => {
+        const input = row.querySelector('.address');
+        row.classList.remove('failed');
+        return {
+          row: row,
+          input: input,
+          index: i,
+          text: input.value.trim(),
+          // Snapshot now: the loop must not read a selection that later edits change.
+          selection: row._selection,
+          minutes: row.querySelector('.minutes').valueAsNumber,
+          mode: row.querySelector('.mode').value,
+          colour: COLOURS[i]
+        };
+      }).filter((entry) => entry.text !== '');   // blank rows are ignored
+    }
+
+    // Text typed but never picked from the list doesn't describe any known
+    // coordinates. Resolve it, then write the resolved address back into the
+    // input so what's on screen always matches what was mapped.
+    async function resolve(entry) {
+      if (entry.selection) return entry.selection;
+
+      const places = await searchPlaces(entry.text, 1, { throttled: true });
+      if (!places.length) throw new Error('no match for "' + entry.text + '"');
+
+      entry.row._selection = places[0];
+      entry.input.value = places[0].label;
+      entry.input.title = places[0].label;
+      save();
+      return places[0];
+    }
+
+    async function run() {
+      const entries = readRows();
+      if (!entries.length) {
+        setStatus('Enter an address or postcode.', true);
+        return;
+      }
+
+      // `max` on the element is only a hint — nothing enforces it without a
+      // form, so the real check happens here, before we spend any requests.
+      const invalid = entries.find((e) =>
+        !Number.isInteger(e.minutes) || e.minutes < 1 || e.minutes > MAX_MINUTES);
+      if (invalid) {
+        invalid.row.classList.add('failed');
+        setStatus('Minutes must be a whole number from 1 to ' + MAX_MINUTES + '.', true);
+        return;
+      }
+
+      setBusy(true);
+      clearMap();
+
+      const geometries = [];
+      const failures = [];
+      // Built up explicitly: L.CircleMarker has no getBounds(), so the drawn
+      // layers can't all be asked for bounds the same way.
+      const bounds = L.latLngBounds([]);
+
+      try {
+        for (const entry of entries) {
+          const label = entries.length > 1
+            ? 'Place ' + (entry.index + 1) + ' of ' + entries.length + ': '
+            : '';
+          try {
+            setStatus(label + 'finding ' + entry.text + '…');
+            const place = await resolve(entry);
+
+            setStatus(label + 'calculating ' + entry.minutes + ' min ' +
+                      modeVerb(entry.mode) + ' time…');
+            const geometry = await travelTimeArea(place.latlng, entry.minutes, entry.mode);
+            geometries.push(geometry);
+
+            const area = draw(L.geoJSON({ type: 'Feature', geometry: geometry, properties: {} }, {
+              style: { color: entry.colour, weight: 2, opacity: 0.9,
+                       fillColor: entry.colour, fillOpacity: 0.12 }
+            }));
+            bounds.extend(area.getBounds());
+            bounds.extend(place.latlng);
+
+            draw(L.circleMarker(place.latlng, {
+              radius: 6, color: '#fff', weight: 2, opacity: 1,
+              fillColor: entry.colour, fillOpacity: 1
+            })).bindPopup(entry.minutes + ' min ' + modeVerb(entry.mode) +
+                          ' from ' + place.label);
+          } catch (error) {
+            entry.row.classList.add('failed');
+            failures.push(entry.text + ' (' + error.message + ')');
+          }
+        }
+
+        // Only ever show an overlap that covers every place in the list. A
+        // partial one looks identical to the real answer but isn't.
+        let overlap = null;
+        if (geometries.length > 1 && !failures.length) {
+          overlap = intersectionLayer(geometries);
+          if (overlap) {
+            draw(overlap);
+            legend.style.display = 'flex';
+          }
+        }
+
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+
+        if (failures.length) {
+          setStatus((entries.length - failures.length) + ' of ' + entries.length +
+                    ' drawn. Failed: ' + failures.join('; ') +
+                    (entries.length > 1 ? '. No overlap shown.' : ''), true);
+        } else if (geometries.length < 2) {
+          setStatus(entries[0].minutes + ' min ' + modeVerb(entries[0].mode) +
+                    ' from ' + entries[0].input.value + '.');
+        } else if (overlap) {
+          setStatus('Overlap of all ' + geometries.length + ' areas shown in yellow.');
+        } else {
+          setStatus('All ' + geometries.length + ' areas drawn, but they do not overlap.');
+        }
+      } catch (error) {
+        // Without this an unexpected throw leaves the status frozen on a
+        // progress message, which reads as "still working" rather than "broke".
+        setStatus('Something went wrong: ' + error.message, true);
+      } finally {
+        setBusy(false);
+        updateSummary();
+      }
+    }
+
+    addButton.addEventListener('click', () => addPlace(true));
+    goButton.addEventListener('click', run);
+
+    loadIsochrones();
+
+    const restored = load();
+    if (restored.length) {
+      restored.forEach((place) => addPlace(false, place));
+      setStatus(restored.length === 1
+        ? 'Restored 1 place — press Go to draw.'
+        : 'Restored ' + restored.length + ' places — press Go to draw.');
+    } else {
+      addPlace(false);
+    }
+  </script>
+</body>
+</html>
