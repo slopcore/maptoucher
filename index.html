@@ -155,6 +155,15 @@
     // Bump the version when the stored shape changes; a mismatch is discarded
     // rather than migrated.
     const STORAGE_KEY = 'maptoucher.places.v1';
+    const ISOCHRONE_KEY = 'maptoucher.isochrones.v1';
+    // Drive-time areas are large, and they share the origin's storage quota
+    // with the place list — which fails silently when the quota is full. Both
+    // limits are deliberately small so this cache is always what yields.
+    const ISOCHRONE_MAX = 12;
+    const ISOCHRONE_BUDGET = 500000;   // characters of geometry, across the store
+    // The road network moves slowly; a month-old area is still a fair answer.
+    const ISOCHRONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const GEOCODE_MAX = 120;
 
     const map = L.map('map').setView([51.505, -0.09], 13);
 
@@ -200,6 +209,125 @@
       return 'HTTP ' + response.status;
     }
 
+    /* ---- caches ---- */
+
+    // Photon and Valhalla are public instances run as a courtesy, and the
+    // surest way to get blocked is to ask the same question twice. Geocoding
+    // is cached for the session; drive-time areas are kept between visits
+    // because they are what a run really spends.
+    const geocodes = new Map();     // request URL -> places
+    const isochrones = new Map();   // place and minutes -> { at, json }
+
+    // A Map keeps insertion order, so the oldest entry is always first.
+    // Re-inserting on a hit stops anything in use from ageing out.
+    function touch(cache, key, value) {
+      cache.delete(key);
+      cache.set(key, value);
+      return value;
+    }
+
+    function isochroneKey(latlng, minutes) {
+      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|auto';
+    }
+
+    function usableGeometry(geometry) {
+      return Boolean(geometry) && typeof geometry === 'object' &&
+             (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') &&
+             Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0;
+    }
+
+    function readIsochrone(key) {
+      const entry = isochrones.get(key);
+      if (!entry) return null;
+      if (Date.now() - entry.at > ISOCHRONE_TTL_MS) {
+        isochrones.delete(key);
+        return null;
+      }
+      // Parsed fresh on every hit: the geometry goes to Leaflet and to
+      // polygon-clipping, and neither promises to leave it alone.
+      let geometry;
+      try {
+        geometry = JSON.parse(entry.json);
+      } catch (e) {
+        geometry = null;
+      }
+      if (!usableGeometry(geometry)) {
+        isochrones.delete(key);   // unusable stored shape: fetch it again
+        return null;
+      }
+      touch(isochrones, key, entry);
+      return geometry;
+    }
+
+    // Guarded on the way in as well as out, so everything in the store is
+    // something a read can use: an entry a read always rejects would hold
+    // budget, be re-deleted every visit, and never be written over.
+    function writeIsochrone(key, geometry) {
+      if (!usableGeometry(geometry)) return;
+      touch(isochrones, key, { at: Date.now(), json: JSON.stringify(geometry) });
+      persistIsochrones();
+    }
+
+    // Sheds oldest-first: down to the cap and the budget, then for as long as
+    // storage keeps refusing what is left.
+    function persistIsochrones() {
+      let size = 0;
+      isochrones.forEach((entry) => { size += entry.json.length; });
+      while (isochrones.size > ISOCHRONE_MAX || size > ISOCHRONE_BUDGET) {
+        const oldest = isochrones.keys().next().value;
+        size -= isochrones.get(oldest).json.length;
+        isochrones.delete(oldest);
+      }
+      // Storage can refuse even what fits the budget, because the place list
+      // shares the quota. Shed from what gets written rather than from what we
+      // hold: a session that can save nothing still asks Valhalla only once.
+      const entries = Array.from(isochrones);
+      while (entries.length) {
+        try {
+          localStorage.setItem(ISOCHRONE_KEY, JSON.stringify({ version: 1, entries: entries }));
+          return;
+        } catch (e) {
+          entries.shift();
+        }
+      }
+      try { localStorage.removeItem(ISOCHRONE_KEY); } catch (e) { /* nothing to clear */ }
+    }
+
+    function storedEntry(entry) {
+      return Array.isArray(entry) && typeof entry[0] === 'string' &&
+             Boolean(entry[1]) && typeof entry[1] === 'object' &&
+             typeof entry[1].json === 'string' &&
+             typeof entry[1].at === 'number' && isFinite(entry[1].at);
+    }
+
+    // Anything unexpected drops the whole store instead of salvaging entries:
+    // re-fetching a few areas costs less than reasoning about a half-trusted
+    // cache, and expiry alone is not corruption.
+    function loadIsochrones() {
+      let parsed = null;
+      try {
+        const raw = localStorage.getItem(ISOCHRONE_KEY);
+        if (!raw) return;
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        parsed = null;
+      }
+
+      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries) ||
+          !parsed.entries.every(storedEntry)) {
+        try { localStorage.removeItem(ISOCHRONE_KEY); } catch (e) { /* nothing to clear */ }
+        return;
+      }
+
+      const now = Date.now();
+      parsed.entries.forEach((entry) => {
+        if (now - entry[1].at <= ISOCHRONE_TTL_MS) isochrones.set(entry[0], entry[1]);
+      });
+      // Expired entries are only dropped from memory above; write the store
+      // back so a visit that spends nothing still reclaims their space.
+      if (isochrones.size < parsed.entries.length) persistIsochrones();
+    }
+
     /* ---- geocoding (Photon) ---- */
 
     // Photon is built for typeahead, which Nominatim's usage policy forbids.
@@ -238,14 +366,31 @@
       };
     }
 
-    async function searchPlaces(query, limit, signal) {
-      const response = await fetch(photonUrl(query, limit), { signal: signal });
+    // The URL is the cache key: it already carries the query, the limit and
+    // the map centre we biased towards. Nothing mutates a place, so callers
+    // can share one. An empty result is an answer too, and is cached.
+    async function searchPlaces(query, limit, options) {
+      const settings = options || {};
+      const url = photonUrl(query, limit);
+      if (geocodes.has(url)) return touch(geocodes, url, geocodes.get(url));
+
+      // Only after a miss: a cache hit should cost no wait at all.
+      if (settings.throttled) await throttle('photon');
+      const response = await fetch(url, { signal: settings.signal });
       if (!response.ok) throw new Error('address lookup failed (HTTP ' + response.status + ')');
       const collection = await response.json();
-      return (collection.features || []).map(toPlace);
+
+      const places = (collection.features || []).map(toPlace);
+      touch(geocodes, url, places);
+      while (geocodes.size > GEOCODE_MAX) geocodes.delete(geocodes.keys().next().value);
+      return places;
     }
 
     async function driveTimeArea(latlng, minutes) {
+      const key = isochroneKey(latlng, minutes);
+      const cached = readIsochrone(key);
+      if (cached) return cached;
+
       await throttle('valhalla');
       const query = {
         locations: [{ lat: latlng[0], lon: latlng[1] }],
@@ -261,7 +406,10 @@
       if (!collection.features || !collection.features.length) {
         throw new Error('no drive-time area returned');
       }
-      return collection.features[0].geometry;
+
+      const geometry = collection.features[0].geometry;
+      writeIsochrone(key, geometry);
+      return geometry;
     }
 
     /* ---- the address combobox ---- */
@@ -332,7 +480,7 @@
         if (controller) controller.abort();
         controller = new AbortController();
         try {
-          const places = await searchPlaces(query, 6, controller.signal);
+          const places = await searchPlaces(query, 6, { signal: controller.signal });
           // A late response must not reopen a list the user has moved past.
           if (input.value.trim() !== query) return;
           render(places);
@@ -566,8 +714,7 @@
     async function resolve(entry) {
       if (entry.selection) return entry.selection;
 
-      await throttle('photon');
-      const places = await searchPlaces(entry.text, 1);
+      const places = await searchPlaces(entry.text, 1, { throttled: true });
       if (!places.length) throw new Error('no match for "' + entry.text + '"');
 
       entry.row._selection = places[0];
@@ -668,6 +815,8 @@
 
     addButton.addEventListener('click', () => addPlace(true));
     goButton.addEventListener('click', run);
+
+    loadIsochrones();
 
     const restored = load();
     if (restored.length) {
