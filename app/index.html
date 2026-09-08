@@ -1814,6 +1814,26 @@
     } else {
       addPlace(false);
     }
+
+    /* ---- initial device location centering ---- */
+    let userInteractedWithMap = false;
+    map.on('dragstart zoomstart', () => {
+      userInteractedWithMap = true;
+    });
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!userInteractedWithMap && !drawn.length && !busy) {
+            map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+          }
+        },
+        () => {
+          // User denied permission or position unavailable; keep default center
+        },
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 120000 }
+      );
+    }
   </script>
 </body>
 </html>
