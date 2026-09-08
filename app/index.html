@@ -1301,8 +1301,7 @@
       const all = rows();
       all.forEach((row, i) => {
         row.querySelector('.swatch').style.background = COLOURS[i];
-        // Keep at least one row: nothing to remove down to.
-        row.querySelector('.remove').disabled = busy || all.length === 1;
+        row.querySelector('.remove').disabled = busy;
         const toggleVisBtn = row.querySelector('.toggle-vis');
         if (toggleVisBtn) toggleVisBtn.disabled = busy;
         // Editing mid-run would invalidate a selection the loop is still using.
@@ -1450,13 +1449,8 @@
           }
         } else {
           // No drawn places remain on map
-          if (overlapLayer) {
-            map.removeLayer(overlapLayer);
-            overlapLayer = null;
-          }
-          currentIntersectionGeometry = null;
-          legend.style.display = 'none';
-          setStatus('Place removed.');
+          clearMap();
+          setStatus(rows().length === 0 ? '' : 'Place removed.');
         }
         updateSummary();
       });
@@ -1606,7 +1600,7 @@
     async function run() {
       const entries = readRows();
       if (!entries.length) {
-        setStatus('Enter an address or postcode.', true);
+        setStatus(rows().length === 0 ? 'Add a place to begin.' : 'Enter an address or postcode.', true);
         return;
       }
 
