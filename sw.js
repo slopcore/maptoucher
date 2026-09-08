@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maptoucher-v5';
+const CACHE_NAME = 'maptoucher-v6';
 const STATIC_ASSETS = [
   './',
   './index.html',

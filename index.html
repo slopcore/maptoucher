@@ -3,29 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MapToucher — Find Where Everyone Can Meet</title>
-  <meta name="description" content="Calculate travel-time overlap for driving or walking from multiple places to find the perfect middle ground.">
+  <title>MapToucher — Commute-Based Property Search & Area Finder</title>
+  <meta name="description" content="Find the ideal area for your property search. Calculate driving and walking commute overlaps from multiple workplaces or schools to discover the perfect neighbourhood to buy or rent.">
   <meta name="theme-color" content="#2563eb">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="MapToucher">
-  <meta property="og:title" content="MapToucher — Find Where Everyone Can Meet">
-  <meta property="og:description" content="Calculate travel-time overlap for driving or walking from multiple places to find the perfect middle ground.">
+  <meta property="og:title" content="MapToucher — Commute-Based Property Search & Area Finder">
+  <meta property="og:description" content="Calculate driving and walking commute overlaps from multiple workplaces to discover the ideal neighbourhood to buy or rent.">
   <meta property="og:image" content="maptoucher-logo.jpeg">
   <style>
     :root {
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
       --primary-light: #eff6ff;
+      --primary-border: #bfdbfe;
       --text: #0f172a;
       --muted: #475569;
       --subtle: #94a3b8;
       --bg: #f8fafc;
       --card-bg: #ffffff;
       --border: #e2e8f0;
-      --accent-yellow: #ffd400;
+      --accent-green: #16a34a;
+      --accent-green-bg: #f0fdf4;
+      --accent-green-border: #bbf7d0;
+      --accent-yellow: #ca8a04;
+      --accent-yellow-bg: #fefce8;
+      --accent-yellow-border: #fef08a;
       --radius: 14px;
       --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
       --shadow-lg: 0 12px 32px -4px rgba(37, 99, 235, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
@@ -37,6 +43,10 @@
       padding: 0;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
@@ -46,8 +56,9 @@
     }
 
     header {
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.88);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
       z-index: 50;
@@ -61,6 +72,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 16px;
     }
 
     .brand {
@@ -80,6 +92,24 @@
       border-radius: 9px;
       object-fit: cover;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--primary);
     }
 
     .nav-btn {
@@ -104,22 +134,37 @@
     main {
       max-width: 1040px;
       margin: 0 auto;
-      padding: 48px 24px 80px;
+      padding: 40px 24px 80px;
     }
 
+    /* ---- Hero Section ---- */
     .hero {
       text-align: center;
-      padding: 40px 12px 64px;
+      padding: 32px 12px 56px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid var(--primary-border);
+      border-radius: 20px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin-bottom: 22px;
     }
 
     .hero-logo-wrapper {
-      margin-bottom: 28px;
+      margin-bottom: 24px;
       display: inline-block;
     }
 
     .hero-logo {
       width: 100%;
-      max-width: 360px;
+      max-width: 340px;
       height: auto;
       border-radius: var(--radius);
       box-shadow: var(--shadow-lg);
@@ -128,7 +173,7 @@
     }
 
     .hero h1 {
-      font-size: 2.8rem;
+      font-size: 2.85rem;
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1.15;
@@ -136,12 +181,16 @@
       color: #0b192c;
     }
 
-    .hero p {
-      font-size: 1.25rem;
+    .hero h1 span.highlight {
+      color: var(--primary);
+    }
+
+    .hero p.lead {
+      font-size: 1.22rem;
       color: var(--muted);
-      max-width: 680px;
+      max-width: 720px;
       margin: 0 auto 32px;
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
     .cta-group {
@@ -149,6 +198,7 @@
       flex-wrap: wrap;
       justify-content: center;
       gap: 16px;
+      margin-bottom: 28px;
     }
 
     .btn-primary {
@@ -192,9 +242,31 @@
       border-color: #cbd5e1;
     }
 
-    .features-section {
-      margin-top: 20px;
-      padding-top: 48px;
+    .hero-proof-list {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .hero-proof-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-proof-item svg {
+      color: var(--accent-green);
+      flex-shrink: 0;
+    }
+
+    /* ---- Section Styles ---- */
+    .section-block {
+      margin-top: 24px;
+      padding-top: 56px;
       border-top: 1px solid var(--border);
     }
 
@@ -203,23 +275,114 @@
       margin-bottom: 40px;
     }
 
+    .section-title .section-tag {
+      text-transform: uppercase;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+      display: block;
+    }
+
     .section-title h2 {
-      font-size: 1.9rem;
+      font-size: 2rem;
       font-weight: 700;
       letter-spacing: -0.02em;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      color: #0b192c;
     }
 
     .section-title p {
       color: var(--muted);
       font-size: 1.05rem;
+      max-width: 640px;
+      margin: 0 auto;
     }
 
+    /* ---- Property Hunt Solution Cards ---- */
+    .prop-contrast-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 36px;
+    }
+
+    .contrast-card {
+      background: #ffffff;
+      border-radius: var(--radius);
+      padding: 30px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .contrast-card.problem {
+      border-top: 4px solid #ef4444;
+      background: #fafafa;
+    }
+
+    .contrast-card.solution {
+      border-top: 4px solid var(--primary);
+      background: #ffffff;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .contrast-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .contrast-icon {
+      font-size: 1.5rem;
+    }
+
+    .contrast-header h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .contrast-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .contrast-card li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .contrast-card.problem li span.bullet {
+      color: #ef4444;
+      font-weight: bold;
+      font-size: 1.1rem;
+      line-height: 1.2;
+    }
+
+    .contrast-card.solution li span.bullet {
+      color: var(--accent-green);
+      font-weight: bold;
+      font-size: 1.1rem;
+      line-height: 1.2;
+    }
+
+    /* ---- Steps Grid ---- */
     .steps-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 24px;
-      margin-bottom: 60px;
+      margin-bottom: 48px;
     }
 
     .step-card {
@@ -266,15 +429,74 @@
       gap: 6px;
       font-size: 0.85rem;
       font-weight: 600;
-      padding: 3px 8px;
+      padding: 4px 10px;
       border-radius: 6px;
       margin-top: 14px;
       width: fit-content;
-      background: #fef9c3;
-      color: #854d0e;
-      border: 1px solid #fde047;
+      background: var(--accent-yellow-bg);
+      color: var(--accent-yellow);
+      border: 1px solid var(--accent-yellow-border);
     }
 
+    /* ---- Secondary Use Cases Section ---- */
+    .secondary-section {
+      background: #f1f5f9;
+      border-radius: var(--radius);
+      padding: 44px 28px;
+      margin-top: 56px;
+      border: 1px solid var(--border);
+    }
+
+    .secondary-section .section-title {
+      margin-bottom: 32px;
+    }
+
+    .secondary-section .section-title h2 {
+      font-size: 1.75rem;
+    }
+
+    .secondary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .secondary-card {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .secondary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+
+    .secondary-icon {
+      font-size: 1.8rem;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+
+    .secondary-card h4 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #1e293b;
+    }
+
+    .secondary-card p {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    /* ---- Benefits Grid ---- */
     .benefits-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -283,14 +505,15 @@
 
     .benefit-item {
       background: #ffffff;
-      padding: 22px;
+      padding: 24px;
       border-radius: 12px;
       border: 1px solid var(--border);
+      box-shadow: var(--shadow);
     }
 
     .benefit-icon {
-      font-size: 1.5rem;
-      margin-bottom: 10px;
+      font-size: 1.6rem;
+      margin-bottom: 12px;
       display: block;
     }
 
@@ -298,6 +521,7 @@
       font-size: 1.05rem;
       font-weight: 700;
       margin-bottom: 6px;
+      color: #1e293b;
     }
 
     .benefit-item p {
@@ -306,6 +530,7 @@
       line-height: 1.5;
     }
 
+    /* ---- Bottom CTA ---- */
     .bottom-cta {
       text-align: center;
       margin-top: 64px;
@@ -313,25 +538,27 @@
       background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
       border: 1px solid #dbeafe;
       border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }
 
     .bottom-cta h2 {
-      font-size: 1.8rem;
+      font-size: 2rem;
       font-weight: 700;
       margin-bottom: 12px;
+      color: #0b192c;
     }
 
     .bottom-cta p {
       color: var(--muted);
-      max-width: 520px;
-      margin: 0 auto 24px;
-      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto 26px;
+      font-size: 1.08rem;
     }
 
     footer {
       border-top: 1px solid var(--border);
       background: #fff;
-      padding: 32px 24px;
+      padding: 36px 24px;
       text-align: center;
       font-size: 0.9rem;
       color: var(--muted);
@@ -346,15 +573,24 @@
       text-decoration: underline;
     }
 
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+      .prop-contrast-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 640px) {
       .hero h1 {
-        font-size: 2.1rem;
+        font-size: 2.15rem;
       }
-      .hero p {
+      .hero p.lead {
         font-size: 1.05rem;
       }
       .hero {
-        padding: 20px 4px 44px;
+        padding: 16px 4px 36px;
       }
       .cta-group {
         flex-direction: column;
@@ -362,6 +598,9 @@
       .btn-primary, .btn-secondary {
         width: 100%;
         justify-content: center;
+      }
+      .secondary-section {
+        padding: 32px 18px;
       }
     }
   </style>
@@ -373,6 +612,11 @@
         <img src="maptoucher-logo.jpeg" alt="MapToucher Logo">
         <span>MapToucher</span>
       </a>
+      <nav class="nav-links">
+        <a href="#property-search" class="nav-link">Property Search</a>
+        <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="#other-uses" class="nav-link">Other Uses</a>
+      </nav>
       <a href="app/" class="nav-btn">
         Open App &rarr;
       </a>
@@ -380,92 +624,218 @@
   </header>
 
   <main>
+    <!-- Hero Section -->
     <section class="hero">
+      <div class="hero-badge">
+        <span>🏡</span> Commute-Smart Property Search
+      </div>
       <div class="hero-logo-wrapper">
         <img src="maptoucher-logo.jpeg" alt="MapToucher" class="hero-logo">
       </div>
-      <h1>Find where everyone can meet.</h1>
-      <p>
-        Whether planning a meetup with friends, coordinating a team gathering, or house hunting together,
-        MapToucher calculates realistic driving and walking travel times to find the fair middle ground.
+      <h1>Find where to live based on <span class="highlight">all your commutes</span>.</h1>
+      <p class="lead">
+        House hunting with a partner, family, or housemates? MapToucher calculates realistic driving and walking times from both workplaces, schools, and frequent destinations — revealing the exact neighbourhoods where nobody gets stuck with an unfair journey.
       </p>
       <div class="cta-group">
         <a href="app/" class="btn-primary">
-          Launch MapToucher
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+          Start Your Property Search
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
           </svg>
         </a>
-        <a href="https://github.com/slopcore/maptoucher" class="btn-secondary" target="_blank" rel="noopener">
-          View on GitHub
+        <a href="#how-it-works" class="btn-secondary">
+          See How It Works &darr;
         </a>
+      </div>
+      <div class="hero-proof-list">
+        <div class="hero-proof-item">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+          Multi-destination commute overlap
+        </div>
+        <div class="hero-proof-item">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+          Real road network times (not radial circles)
+        </div>
+        <div class="hero-proof-item">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+          100% Free & private
+        </div>
       </div>
     </section>
 
-    <section class="features-section">
+    <!-- Property Search Focus: Problem vs Solution -->
+    <section class="section-block" id="property-search">
       <div class="section-title">
-        <h2>How it works</h2>
-        <p>Three simple steps to find your shared sweet spot.</p>
+        <span class="section-tag">Target Your House Hunt</span>
+        <h2>The smarter way to choose where to buy or rent</h2>
+        <p>Traditional property search sites make it notoriously hard to balance two or more commutes. MapToucher solves the two-commuter puzzle before you browse listings.</p>
+      </div>
+
+      <div class="prop-contrast-grid">
+        <div class="contrast-card problem">
+          <div class="contrast-header">
+            <span class="contrast-icon">❌</span>
+            <h3>The Portal Search Struggle</h3>
+          </div>
+          <ul>
+            <li>
+              <span class="bullet">&times;</span>
+              <span><strong>Single-location bias:</strong> Portals force you to search within a radius of one postcode, neglecting your partner's or housemates' commutes.</span>
+            </li>
+            <li>
+              <span class="bullet">&times;</span>
+              <span><strong>Crude radius circles:</strong> As-the-crow-flies circles ignore winding roads, rivers, bottlenecks, and real highway access.</span>
+            </li>
+            <li>
+              <span class="bullet">&times;</span>
+              <span><strong>Endless tab switching:</strong> Checking commute durations manually on Google Maps for every single listing wastes hours.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="contrast-card solution">
+          <div class="contrast-header">
+            <span class="contrast-icon">✨</span>
+            <h3>The MapToucher Approach</h3>
+          </div>
+          <ul>
+            <li>
+              <span class="bullet">&#10003;</span>
+              <span><strong>Simultaneous commute limits:</strong> Add up to 6 locations (e.g. Work A, Work B, School) with customized travel time budgets.</span>
+            </li>
+            <li>
+              <span class="bullet">&#10003;</span>
+              <span><strong>True road-network isochrones:</strong> Calculates genuine driving and walking contours based on actual road networks and speed limits.</span>
+            </li>
+            <li>
+              <span class="bullet">&#10003;</span>
+              <span><strong>The Golden Zone:</strong> Pinpoints the exact overlapping area where you should draw your search on Rightmove, Zoopla, or Zillow.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="section-block" id="how-it-works">
+      <div class="section-title">
+        <span class="section-tag">Step by Step</span>
+        <h2>How it works for your property hunt</h2>
+        <p>Three straightforward steps to pinpoint the neighbourhoods that work for your whole household.</p>
       </div>
 
       <div class="steps-grid">
         <div class="step-card">
           <div class="step-number">1</div>
-          <h3>Add starting points</h3>
+          <h3>Input your commute hubs</h3>
           <p>
-            Enter addresses, postcodes, or landmarks for everyone in the group. Instant autocomplete helps you pick the right spot fast.
+            Enter your workplace, your partner's office, children's school, or key transit stations. Instant autocomplete lets you pick exact locations quickly.
           </p>
         </div>
 
         <div class="step-card">
           <div class="step-number">2</div>
-          <h3>Set travel limits</h3>
+          <h3>Set individual travel limits</h3>
           <p>
-            Choose how far each person is willing to travel (up to 60 minutes) and their mode of travel &mdash; drive or walk.
+            Select maximum acceptable travel times (up to 60 minutes) and preferred mode &mdash; drive or walk &mdash; tailored for each person.
           </p>
         </div>
 
         <div class="step-card">
           <div class="step-number">3</div>
-          <h3>See the overlap</h3>
+          <h3>Uncover your search sweet spot</h3>
           <p>
-            MapToucher calculates actual road-network isochrones and highlights the golden zone reachable from every single location.
+            MapToucher calculates genuine travel contours and illuminates the golden overlap zone where any home meets everyone's commute requirements.
           </p>
           <div class="highlight-badge">
-            Reachable from every place
+            Target this zone on property portals
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Secondary Use Cases Section -->
+    <section class="secondary-section" id="other-uses">
+      <div class="section-title">
+        <span class="section-tag">Secondary Use Cases</span>
+        <h2>Not just for house hunting &mdash; also great for:</h2>
+        <p>Any time two or more people need to find a fair middle ground, MapToucher does the heavy lifting.</p>
+      </div>
+
+      <div class="secondary-grid">
+        <div class="secondary-card">
+          <span class="secondary-icon">🍻</span>
+          <h4>Meeting Friends Halfway</h4>
+          <p>
+            Planning dinner, drinks, or coffee with friends across town? Enter everyone's starting points to discover the fairest neighbourhoods and venues where nobody has to travel twice as far.
+          </p>
+        </div>
+
+        <div class="secondary-card">
+          <span class="secondary-icon">💼</span>
+          <h4>Team & Client Gatherings</h4>
+          <p>
+            Organizing an in-person workshop or offsite for a distributed or hybrid team? Find central meeting rooms, coworking offices, or dinner spots equally accessible to colleagues.
+          </p>
+        </div>
+
+        <div class="secondary-card">
+          <span class="secondary-icon">🚗</span>
+          <h4>Family Visits & Day Trips</h4>
+          <p>
+            Coordinating a get-together with family living in different cities or counties? Pin everyone's hometown to identify midway parks, towns, or attractions for a stress-free meetup.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Key Benefits Section -->
+    <section class="section-block">
+      <div class="section-title">
+        <span class="section-tag">Why It Works</span>
+        <h2>Built with precision and privacy</h2>
+        <p>No compromises on accuracy, speed, or your personal data.</p>
       </div>
 
       <div class="benefits-grid">
         <div class="benefit-item">
           <span class="benefit-icon">⏱️</span>
-          <h4>Real Travel Times</h4>
-          <p>Calculates true road and walking network travel times (isochrones), not just simplistic straight-line circles.</p>
+          <h4>Real Travel Isochrones</h4>
+          <p>Calculates true road and walking network travel times, taking account of speed limits, turns, and highway routing.</p>
         </div>
         <div class="benefit-item">
           <span class="benefit-icon">📍</span>
           <h4>Multi-Place Overlap</h4>
-          <p>Add up to six different locations with individual time budgets and travel modes, automatically intersecting the reachable zones.</p>
+          <p>Add up to six starting points with independent time budgets and travel modes, automatically intersecting the reachable zones.</p>
+        </div>
+        <div class="benefit-item">
+          <span class="benefit-icon">🔦</span>
+          <h4>Spotlight Clarity</h4>
+          <p>Spotlight view darkens everything outside your target zone, making the viable neighbourhoods pop with crystal clarity.</p>
         </div>
         <div class="benefit-item">
           <span class="benefit-icon">🔒</span>
-          <h4>Privacy & Local Storage</h4>
-          <p>Your saved places stay in your browser's local storage. No accounts, cookies, tracking, or ads.</p>
-        </div>
-        <div class="benefit-item">
-          <span class="benefit-icon">🗺️</span>
-          <h4>Open Source & Open Data</h4>
-          <p>Built with OpenStreetMap, Photon typeahead geocoding, and FOSSGIS Valhalla routing.</p>
+          <h4>Private & Account-Free</h4>
+          <p>Your saved places stay in your browser's local storage. No accounts, no data tracking, and no search profiling.</p>
         </div>
       </div>
     </section>
 
+    <!-- Bottom Call to Action -->
     <section class="bottom-cta">
-      <h2>Ready to find your middle ground?</h2>
-      <p>No registration or setup needed. Jump straight into the interactive map.</p>
+      <h2>Ready to find your ideal home search area?</h2>
+      <p>Stop guessing postcodes. Map your commutes now and discover the neighbourhoods that fit your whole household.</p>
       <a href="app/" class="btn-primary">
-        Go to the App &rarr;
+        Launch MapToucher
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+        </svg>
       </a>
     </section>
   </main>
