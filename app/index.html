@@ -647,7 +647,9 @@
       return MODES.find((mode) => mode.value === knownMode(value)).verb;
     }
 
-    const map = L.map('map').setView([51.505, -0.09], 13);
+    const map = L.map('map', {
+      doubleClickZoom: false
+    }).setView([51.505, -0.09], 13);
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -1044,6 +1046,39 @@
       return places;
     }
 
+    async function reverseGeocode(latlng) {
+      const lat = typeof latlng.lat === 'number' ? latlng.lat : latlng[0];
+      const lng = typeof latlng.lng === 'number' ? latlng.lng : latlng[1];
+      const url = 'https://photon.komoot.io/reverse?lat=' + lat.toFixed(5) + '&lon=' + lng.toFixed(5);
+      if (geocodes.has(url)) return touch(geocodes, url, geocodes.get(url));
+
+      try {
+        await throttle('photon');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const collection = await response.json();
+        if (collection.features && collection.features.length) {
+          const place = toPlace(collection.features[0]);
+          place.latlng = [lat, lng];
+          touch(geocodes, url, place);
+          while (geocodes.size > GEOCODE_MAX) geocodes.delete(geocodes.keys().next().value);
+          return place;
+        }
+      } catch (e) {
+        // Fall back to coordinate string if offline or not found
+      }
+
+      const coordStr = lat.toFixed(4) + ', ' + lng.toFixed(4);
+      const fallback = {
+        latlng: [lat, lng],
+        primary: coordStr,
+        secondary: 'Pinned location',
+        label: coordStr
+      };
+      touch(geocodes, url, fallback);
+      return fallback;
+    }
+
     async function travelTimeArea(latlng, minutes, mode) {
       const key = isochroneKey(latlng, minutes, mode);
       const cached = readIsochrone(key);
@@ -1284,6 +1319,7 @@
       row.className = 'place';
       row._selection = null;
       row._layers = null;
+      row._geometry = null;
       row._visible = saved ? (saved.visible !== false) : true;
       row.innerHTML =
         '<span class="swatch"></span>' +
@@ -1355,18 +1391,74 @@
       row.querySelector('.remove').addEventListener('click', () => {
         if (busy) return;
         if (row._layers) {
-          if (row._layers.area && map.hasLayer(row._layers.area)) map.removeLayer(row._layers.area);
-          if (row._layers.marker && map.hasLayer(row._layers.marker)) map.removeLayer(row._layers.marker);
+          if (row._layers.area) {
+            map.removeLayer(row._layers.area);
+            const idx = drawn.indexOf(row._layers.area);
+            if (idx !== -1) drawn.splice(idx, 1);
+          }
+          if (row._layers.marker) {
+            map.removeLayer(row._layers.marker);
+            const idx = drawn.indexOf(row._layers.marker);
+            if (idx !== -1) drawn.splice(idx, 1);
+          }
           row._layers = null;
         }
+        row._geometry = null;
         row.remove();
-        // Colours are assigned by list position, so removing a row remaps every
-        // place after it. Anything already drawn no longer matches the panel.
-        if (drawn.length) {
-          clearMap();
-          setStatus('Place removed — press Go to redraw.');
-        }
         refreshList();
+
+        // Dynamically update the map with remaining drawn places without redrawing from scratch
+        const remainingDrawn = rows().filter((r) => r._geometry);
+        if (remainingDrawn.length > 0) {
+          // Re-sync colours of remaining map layers with new list positions
+          rows().forEach((r, i) => {
+            const newColour = COLOURS[i];
+            if (r._layers) {
+              if (r._layers.area) {
+                r._layers.area.setStyle({ color: newColour, fillColor: newColour });
+              }
+              if (r._layers.marker) {
+                r._layers.marker.setStyle({ fillColor: newColour });
+              }
+            }
+          });
+
+          // Recompute intersection if 2 or more places remain
+          if (remainingDrawn.length >= 2) {
+            const geoms = remainingDrawn.map((r) => r._geometry);
+            const result = polygonClipping.intersection(...geoms.map((g) => g.coordinates));
+            if (result && result.length) {
+              currentIntersectionGeometry = result;
+              updateIntersectionLayer();
+              setStatus(spotlightMode
+                ? 'Place removed. Spotlight updated for remaining ' + remainingDrawn.length + ' places.'
+                : 'Place removed. Overlap updated for remaining ' + remainingDrawn.length + ' places.');
+            } else {
+              currentIntersectionGeometry = null;
+              updateIntersectionLayer();
+              setStatus('Place removed. Remaining ' + remainingDrawn.length + ' areas do not overlap.');
+            }
+          } else {
+            // Exactly 1 place left drawn
+            currentIntersectionGeometry = null;
+            updateIntersectionLayer();
+            const lastPlace = remainingDrawn[0];
+            const mins = lastPlace.querySelector('.minutes').value;
+            const mode = lastPlace.querySelector('.mode').value;
+            const label = lastPlace.querySelector('.address').value;
+            setStatus('Place removed. ' + mins + ' min ' + modeVerb(mode) + ' from ' + label + '.');
+          }
+        } else {
+          // No drawn places remain on map
+          if (overlapLayer) {
+            map.removeLayer(overlapLayer);
+            overlapLayer = null;
+          }
+          currentIntersectionGeometry = null;
+          legend.style.display = 'none';
+          setStatus('Place removed.');
+        }
+        updateSummary();
       });
 
       placesEl.appendChild(row);
@@ -1385,7 +1477,7 @@
 
     function clearMap() {
       drawn.splice(0).forEach((layer) => map.removeLayer(layer));
-      rows().forEach((r) => { r._layers = null; });
+      rows().forEach((r) => { r._layers = null; r._geometry = null; });
       if (overlapLayer) {
         map.removeLayer(overlapLayer);
         overlapLayer = null;
@@ -1565,6 +1657,7 @@
                           ' from ' + place.label);
 
             entry.row._layers = { area: area, marker: marker };
+            entry.row._geometry = geometry;
             drawn.push(area, marker);
 
             if (entry.row._visible !== false) {
@@ -1617,6 +1710,98 @@
 
     addButton.addEventListener('click', () => addPlace(true));
     goButton.addEventListener('click', run);
+
+    /* ---- map double-click / double-tap to add place ---- */
+
+    async function addPlaceFromLatLng(latlng) {
+      if (busy) return;
+      const currentRows = rows();
+      if (currentRows.length >= COLOURS.length && currentRows.every((r) => r.querySelector('.address').value.trim())) {
+        setStatus('Maximum of ' + COLOURS.length + ' places reached.', true);
+        return;
+      }
+
+      // If an existing row has an empty address, reuse it; otherwise add a new row
+      let targetRow = currentRows.find((r) => !r.querySelector('.address').value.trim());
+      if (!targetRow) {
+        targetRow = addPlace(false);
+      }
+
+      // Expand the bottom sheet so the user sees the new entry
+      setPanelCollapsed(false);
+
+      const input = targetRow.querySelector('.address');
+      input.value = 'Locating…';
+      input.disabled = true;
+
+      const lat = typeof latlng.lat === 'number' ? latlng.lat : latlng[0];
+      const lng = typeof latlng.lng === 'number' ? latlng.lng : latlng[1];
+      setStatus('Finding address at ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '…');
+
+      try {
+        const place = await reverseGeocode(latlng);
+        targetRow._selection = place;
+        input.value = place.label;
+        input.title = place.label;
+        save();
+        refreshList();
+        setStatus('Added ' + place.primary + ' — press Go to calculate.');
+      } catch (err) {
+        const coordStr = lat.toFixed(4) + ', ' + lng.toFixed(4);
+        targetRow._selection = {
+          latlng: [lat, lng],
+          primary: coordStr,
+          secondary: 'Pinned location',
+          label: coordStr
+        };
+        input.value = coordStr;
+        save();
+        refreshList();
+        setStatus('Added location at ' + coordStr + ' — press Go to calculate.');
+      } finally {
+        input.disabled = false;
+      }
+    }
+
+    let lastTapTime = 0;
+    let lastTapPos = null;
+    let lastHandledTime = 0;
+
+    function handleMapDoubleAction(latlng) {
+      const now = Date.now();
+      if (now - lastHandledTime < 500) return;
+      lastHandledTime = now;
+      addPlaceFromLatLng(latlng);
+    }
+
+    map.on('dblclick', (e) => {
+      handleMapDoubleAction(e.latlng);
+    });
+
+    // Mobile double-tap detector on the map container
+    const mapEl = map.getContainer();
+    mapEl.addEventListener('touchend', (e) => {
+      if (e.touches.length > 0 || e.changedTouches.length !== 1) return;
+      if (e.target.closest && e.target.closest('.leaflet-control')) return;
+
+      const touch = e.changedTouches[0];
+      const now = Date.now();
+      const timeDiff = now - lastTapTime;
+      const touchX = touch.clientX;
+      const touchY = touch.clientY;
+
+      if (timeDiff < 350 && timeDiff > 40 && lastTapPos) {
+        const distX = Math.abs(touchX - lastTapPos.x);
+        const distY = Math.abs(touchY - lastTapPos.y);
+        if (distX < 30 && distY < 30) {
+          const containerPoint = map.mouseEventToContainerPoint(touch);
+          const latlng = map.containerPointToLatLng(containerPoint);
+          handleMapDoubleAction(latlng);
+        }
+      }
+      lastTapTime = now;
+      lastTapPos = { x: touchX, y: touchY };
+    }, { passive: true });
 
     loadIsochrones();
 
