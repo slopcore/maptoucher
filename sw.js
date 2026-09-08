@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maptoucher-v1';
+const CACHE_NAME = 'maptoucher-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -35,8 +35,24 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // For API endpoints, use network only
+  // For routing and geocoding APIs, use network only
   if (url.origin.includes('photon.komoot.io') || url.origin.includes('valhalla')) {
+    return;
+  }
+
+  // Network-first for navigation / HTML so new updates are loaded immediately
+  if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 

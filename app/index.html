@@ -377,6 +377,44 @@
     .suggestions .primary { display: block; font-size: 13px; font-weight: 500; }
     .suggestions .secondary { display: block; font-size: 11px; color: #888; }
 
+    .toggle-vis {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease, background-color 0.15s ease;
+    }
+    .toggle-vis:hover:not(:disabled) {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+    .toggle-vis.muted {
+      color: #94a3b8;
+      opacity: 0.6;
+    }
+    .toggle-vis.muted:hover:not(:disabled) {
+      opacity: 1;
+      color: #64748b;
+    }
+    .toggle-vis:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    .place.place-hidden input {
+      color: #94a3b8;
+    }
+    .place.place-hidden .swatch {
+      opacity: 0.35;
+    }
+
     .remove {
       flex: 0 0 auto;
       width: 22px;
@@ -411,20 +449,61 @@
     #status { margin-top: 8px; font-size: 12px; color: #64748b; min-height: 1.4em; }
     #status.error { color: #dc2626; font-weight: 500; }
     #legend {
-      margin-top: 6px;
+      margin-top: 10px;
       font-size: 12px;
       color: #334155;
       display: none;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
+      gap: 8px;
       font-weight: 500;
+      padding: 6px 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+    .legend-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     #legend .key {
       width: 14px;
-      height: 10px;
-      background: rgba(255, 212, 0, 0.7);
-      border: 1px solid #1a1a1a;
-      border-radius: 2px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    #legend .key.spotlight-key {
+      background: #ffffff;
+      border: 2px solid #eab308;
+      box-shadow: 0 0 4px rgba(234, 179, 8, 0.45);
+    }
+    #legend .key.classic-key {
+      background: rgba(234, 179, 8, 0.4);
+      border: 1.5px solid #ca8a04;
+    }
+    .spotlight-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .spotlight-toggle-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    .spotlight-toggle-btn.active {
+      background: #fef08a;
+      border-color: #eab308;
+      color: #854d0e;
     }
 
     /* Mobile Responsive Optimizations */
@@ -510,7 +589,15 @@
         <button id="go" type="button">Go</button>
       </div>
       <div id="status" role="status" aria-live="polite"></div>
-      <div id="legend"><span class="key"></span><span>Reachable from every place</span></div>
+      <div id="legend">
+        <div class="legend-left">
+          <span class="key" id="legend-key"></span>
+          <span id="legend-text">Golden intersection</span>
+        </div>
+        <button id="toggle-spotlight" type="button" class="spotlight-toggle-btn active" title="Switch view style">
+          <span id="spotlight-badge">Inverse spotlight</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -574,6 +661,49 @@
     const goButton = document.getElementById('go');
     const status = document.getElementById('status');
     const legend = document.getElementById('legend');
+    const toggleSpotlightBtn = document.getElementById('toggle-spotlight');
+    const legendKey = document.getElementById('legend-key');
+    const legendText = document.getElementById('legend-text');
+    const spotlightBadge = document.getElementById('spotlight-badge');
+
+    const EYE_OPEN_SVG = '<svg class="eye-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const EYE_CLOSED_SVG = '<svg class="eye-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"></line></svg>';
+
+    let spotlightMode = true;
+    try {
+      const storedSpotlight = localStorage.getItem('maptoucher.spotlight');
+      if (storedSpotlight !== null) spotlightMode = storedSpotlight === 'true';
+    } catch (e) {}
+
+    let currentIntersectionGeometry = null;
+    let overlapLayer = null;
+
+    function updateLegendUI() {
+      if (!toggleSpotlightBtn) return;
+      if (spotlightMode) {
+        legendKey.className = 'key spotlight-key';
+        legendText.textContent = 'Golden spotlight';
+        toggleSpotlightBtn.classList.add('active');
+        spotlightBadge.textContent = 'Spotlight (clear)';
+        toggleSpotlightBtn.title = 'Switch to classic overlay';
+      } else {
+        legendKey.className = 'key classic-key';
+        legendText.textContent = 'Overlap area';
+        toggleSpotlightBtn.classList.remove('active');
+        spotlightBadge.textContent = 'Classic overlay';
+        toggleSpotlightBtn.title = 'Switch to spotlight view';
+      }
+    }
+
+    if (toggleSpotlightBtn) {
+      toggleSpotlightBtn.addEventListener('click', () => {
+        spotlightMode = !spotlightMode;
+        try {
+          localStorage.setItem('maptoucher.spotlight', String(spotlightMode));
+        } catch (e) {}
+        updateIntersectionLayer();
+      });
+    }
 
     const searchPanel = document.getElementById('search');
     const sheetHeader = document.getElementById('sheet-header');
@@ -708,7 +838,7 @@
       }
     });
 
-    const drawn = [];                 // every layer from the last run
+    let drawn = [];                   // every layer from the last run
     const lastRequestAt = new Map();  // service -> timestamp, for throttling
     let busy = false;
     let rowSeq = 0;
@@ -1072,6 +1202,7 @@
         text: row.querySelector('.address').value,
         minutes: row.querySelector('.minutes').value,
         mode: row.querySelector('.mode').value,
+        visible: row._visible !== false,
         selection: row._selection
       }));
       try {
@@ -1103,6 +1234,7 @@
         // Lists saved before there was a picker have no mode, which is not a
         // shape this can't read: an absent one drives, as it always did.
         mode: knownMode(entry.mode),
+        visible: entry.visible !== false,
         selection: usable ? {
           latlng: selection.latlng,
           label: selection.label,
@@ -1136,6 +1268,8 @@
         row.querySelector('.swatch').style.background = COLOURS[i];
         // Keep at least one row: nothing to remove down to.
         row.querySelector('.remove').disabled = busy || all.length === 1;
+        const toggleVisBtn = row.querySelector('.toggle-vis');
+        if (toggleVisBtn) toggleVisBtn.disabled = busy;
         // Editing mid-run would invalidate a selection the loop is still using.
         row.querySelectorAll('input, select').forEach((field) => { field.disabled = busy; });
       });
@@ -1149,8 +1283,13 @@
       const row = document.createElement('div');
       row.className = 'place';
       row._selection = null;
+      row._layers = null;
+      row._visible = saved ? (saved.visible !== false) : true;
       row.innerHTML =
         '<span class="swatch"></span>' +
+        '<button class="toggle-vis" type="button" aria-label="Hide on map" title="Hide on map">' +
+          EYE_OPEN_SVG +
+        '</button>' +
         '<input class="address" type="text" placeholder="Address or postcode" ' +
                'autocomplete="off" role="combobox" aria-autocomplete="list" ' +
                'aria-expanded="false" aria-controls="' + id + '" aria-label="Address or postcode">' +
@@ -1162,6 +1301,33 @@
         '<button class="remove" type="button" title="Remove place" ' +
                'aria-label="Remove place">&times;</button>' +
         '<ul class="suggestions" id="' + id + '" role="listbox" hidden></ul>';
+
+      const toggleVisBtn = row.querySelector('.toggle-vis');
+      function setRowVisible(visible) {
+        row._visible = visible;
+        toggleVisBtn.innerHTML = visible ? EYE_OPEN_SVG : EYE_CLOSED_SVG;
+        toggleVisBtn.classList.toggle('muted', !visible);
+        const label = visible ? 'Hide on map' : 'Show on map';
+        toggleVisBtn.setAttribute('aria-label', label);
+        toggleVisBtn.setAttribute('title', label);
+        row.classList.toggle('place-hidden', !visible);
+
+        if (row._layers) {
+          if (visible) {
+            if (row._layers.area && !map.hasLayer(row._layers.area)) row._layers.area.addTo(map);
+            if (row._layers.marker && !map.hasLayer(row._layers.marker)) row._layers.marker.addTo(map);
+          } else {
+            if (row._layers.area && map.hasLayer(row._layers.area)) map.removeLayer(row._layers.area);
+            if (row._layers.marker && map.hasLayer(row._layers.marker)) map.removeLayer(row._layers.marker);
+          }
+        }
+        save();
+      }
+
+      toggleVisBtn.addEventListener('click', () => {
+        if (busy) return;
+        setRowVisible(!row._visible);
+      });
 
       autocomplete(row, row.querySelector('.address'), row.querySelector('.suggestions'));
       const minutesInput = row.querySelector('.minutes');
@@ -1181,9 +1347,18 @@
         modeInput.value = saved.mode;
         row._selection = saved.selection;
         if (saved.selection) address.title = saved.selection.label;
+        setRowVisible(saved.visible !== false);
+      } else {
+        setRowVisible(true);
       }
+
       row.querySelector('.remove').addEventListener('click', () => {
         if (busy) return;
+        if (row._layers) {
+          if (row._layers.area && map.hasLayer(row._layers.area)) map.removeLayer(row._layers.area);
+          if (row._layers.marker && map.hasLayer(row._layers.marker)) map.removeLayer(row._layers.marker);
+          row._layers = null;
+        }
         row.remove();
         // Colours are assigned by list position, so removing a row remaps every
         // place after it. Anything already drawn no longer matches the panel.
@@ -1210,6 +1385,12 @@
 
     function clearMap() {
       drawn.splice(0).forEach((layer) => map.removeLayer(layer));
+      rows().forEach((r) => { r._layers = null; });
+      if (overlapLayer) {
+        map.removeLayer(overlapLayer);
+        overlapLayer = null;
+      }
+      currentIntersectionGeometry = null;
       legend.style.display = 'none';
       updateSummary();
     }
@@ -1219,16 +1400,78 @@
       return layer;
     }
 
-    // polygon-clipping returns bare MultiPolygon coordinates in [lon, lat];
-    // wrapping them as GeoJSON lets Leaflet do the axis swap.
-    function intersectionLayer(geometries) {
-      const result = polygonClipping.intersection(...geometries.map((g) => g.coordinates));
-      if (!result.length) return null;
+    // Renders the intersection: either as an inverse spotlight (darkening the
+    // world outside so the intersection is crystal clear and legible) or as a
+    // classic tinted overlay.
+    function updateIntersectionLayer() {
+      if (overlapLayer) {
+        map.removeLayer(overlapLayer);
+        const idx = drawn.indexOf(overlapLayer);
+        if (idx !== -1) drawn.splice(idx, 1);
+        overlapLayer = null;
+      }
+      if (!currentIntersectionGeometry) {
+        legend.style.display = 'none';
+        updateSummary();
+        return;
+      }
 
-      return L.geoJSON(
-        { type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: result }, properties: {} },
-        { style: { color: '#1a1a1a', weight: 2, opacity: 0.9, fillColor: '#ffd400', fillOpacity: 0.55 } }
-      );
+      const group = L.featureGroup();
+      if (spotlightMode) {
+        // Create an inverse mask covering the world with the intersection cut out
+        const worldBox = [[[-360, -85.05], [360, -85.05], [360, 85.05], [-360, 85.05], [-360, -85.05]]];
+        const diff = polygonClipping.difference(worldBox, currentIntersectionGeometry);
+        const mask = L.geoJSON({
+          type: 'Feature',
+          geometry: { type: 'MultiPolygon', coordinates: diff },
+          properties: {}
+        }, {
+          style: {
+            fillColor: '#0f172a',
+            fillOpacity: 0.42,
+            stroke: false
+          },
+          interactive: false
+        });
+        group.addLayer(mask);
+
+        // Golden glowing border and gentle sheen over the spotlight intersection
+        const border = L.geoJSON({
+          type: 'Feature',
+          geometry: { type: 'MultiPolygon', coordinates: currentIntersectionGeometry },
+          properties: {}
+        }, {
+          style: {
+            color: '#eab308',
+            weight: 3.5,
+            opacity: 0.95,
+            fillColor: '#fef08a',
+            fillOpacity: 0.08
+          }
+        });
+        group.addLayer(border);
+      } else {
+        // Classic overlay mode: legible yellow tint with golden border
+        const overlay = L.geoJSON({
+          type: 'Feature',
+          geometry: { type: 'MultiPolygon', coordinates: currentIntersectionGeometry },
+          properties: {}
+        }, {
+          style: {
+            color: '#ca8a04',
+            weight: 2.5,
+            opacity: 0.9,
+            fillColor: '#eab308',
+            fillOpacity: 0.28
+          }
+        });
+        group.addLayer(overlay);
+      }
+
+      overlapLayer = draw(group);
+      legend.style.display = 'flex';
+      updateLegendUI();
+      updateSummary();
     }
 
     /* ---- the run ---- */
@@ -1246,6 +1489,7 @@
           selection: row._selection,
           minutes: row.querySelector('.minutes').valueAsNumber,
           mode: row.querySelector('.mode').value,
+          visible: row._visible !== false,
           colour: COLOURS[i]
         };
       }).filter((entry) => entry.text !== '');   // blank rows are ignored
@@ -1307,18 +1551,26 @@
             const geometry = await travelTimeArea(place.latlng, entry.minutes, entry.mode);
             geometries.push(geometry);
 
-            const area = draw(L.geoJSON({ type: 'Feature', geometry: geometry, properties: {} }, {
+            const area = L.geoJSON({ type: 'Feature', geometry: geometry, properties: {} }, {
               style: { color: entry.colour, weight: 2, opacity: 0.9,
                        fillColor: entry.colour, fillOpacity: 0.12 }
-            }));
+            });
             bounds.extend(area.getBounds());
             bounds.extend(place.latlng);
 
-            draw(L.circleMarker(place.latlng, {
+            const marker = L.circleMarker(place.latlng, {
               radius: 6, color: '#fff', weight: 2, opacity: 1,
               fillColor: entry.colour, fillOpacity: 1
-            })).bindPopup(entry.minutes + ' min ' + modeVerb(entry.mode) +
+            }).bindPopup(entry.minutes + ' min ' + modeVerb(entry.mode) +
                           ' from ' + place.label);
+
+            entry.row._layers = { area: area, marker: marker };
+            drawn.push(area, marker);
+
+            if (entry.row._visible !== false) {
+              area.addTo(map);
+              marker.addTo(map);
+            }
           } catch (error) {
             entry.row.classList.add('failed');
             failures.push(entry.text + ' (' + error.message + ')');
@@ -1329,10 +1581,11 @@
         // partial one looks identical to the real answer but isn't.
         let overlap = null;
         if (geometries.length > 1 && !failures.length) {
-          overlap = intersectionLayer(geometries);
-          if (overlap) {
-            draw(overlap);
-            legend.style.display = 'flex';
+          const result = polygonClipping.intersection(...geometries.map((g) => g.coordinates));
+          if (result.length) {
+            currentIntersectionGeometry = result;
+            updateIntersectionLayer();
+            overlap = true;
           }
         }
 
@@ -1346,7 +1599,9 @@
           setStatus(entries[0].minutes + ' min ' + modeVerb(entries[0].mode) +
                     ' from ' + entries[0].input.value + '.');
         } else if (overlap) {
-          setStatus('Overlap of all ' + geometries.length + ' areas shown in yellow.');
+          setStatus(spotlightMode
+            ? 'Spotlight on overlap of all ' + geometries.length + ' areas (roads and labels clear).'
+            : 'Overlap of all ' + geometries.length + ' areas shown.');
         } else {
           setStatus('All ' + geometries.length + ' areas drawn, but they do not overlap.');
         }
