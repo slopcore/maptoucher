@@ -20,7 +20,7 @@
       top: 10px;
       right: 10px;
       z-index: 1200;
-      width: 320px;
+      width: 360px;
       padding: 10px;
       box-sizing: border-box;
       background: #fff;
@@ -40,17 +40,19 @@
       border-radius: 50%;
       border: 1px solid rgba(0, 0, 0, 0.25);
     }
-    .place input {
+    .place input, .place select {
       padding: 6px 8px;
       border: 1px solid #ccc;
       border-radius: 4px;
       font: inherit;
       min-width: 0;
+      background: #fff;
     }
     .place .address { flex: 1; }
     .place .minutes { flex: 0 0 62px; width: 62px; }
+    .place .mode { flex: 0 0 auto; padding: 6px 4px; }
     .place.failed input { border-color: #c0392b; }
-    .place input:disabled { background: #f7f7f7; color: #999; }
+    .place input:disabled, .place select:disabled { background: #f7f7f7; color: #999; }
 
     .suggestions {
       position: absolute;
@@ -142,8 +144,15 @@
           integrity="sha384-1rzjf0+iuELMhFIrp9iYaamoIVLnUjHj93MbKlIsn5PnIJDXT7ynaE0i6IhYsOOV"
           crossorigin=""></script>
   <script>
-    // The public FOSSGIS Valhalla instance caps isochrones at 60 minutes.
+    // The public FOSSGIS Valhalla instance caps isochrones at 60 minutes, for
+    // every costing model it offers.
     const MAX_MINUTES = 60;
+    // Valhalla costing models, in the order the picker offers them. The value
+    // goes to the API and into the cache key; the verb goes on screen.
+    const MODES = [
+      { value: 'auto', label: 'Drive', verb: 'drive' },
+      { value: 'pedestrian', label: 'Walk', verb: 'walk' }
+    ];
     // One colour per place; the list is capped at this many so every place
     // keeps a distinct colour.
     const COLOURS = ['#3388ff', '#e6550d', '#31a354', '#756bb1', '#e7298a', '#00868b'];
@@ -164,6 +173,15 @@
     // The road network moves slowly; a month-old area is still a fair answer.
     const ISOCHRONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
     const GEOCODE_MAX = 120;
+
+    // Anything unrecognised drives: the first mode is the default everywhere.
+    function knownMode(value) {
+      return MODES.some((mode) => mode.value === value) ? value : MODES[0].value;
+    }
+
+    function modeVerb(value) {
+      return MODES.find((mode) => mode.value === knownMode(value)).verb;
+    }
 
     const map = L.map('map').setView([51.505, -0.09], 13);
 
@@ -226,8 +244,8 @@
       return value;
     }
 
-    function isochroneKey(latlng, minutes) {
-      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|auto';
+    function isochroneKey(latlng, minutes, mode) {
+      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|' + mode;
     }
 
     function usableGeometry(geometry) {
@@ -386,15 +404,15 @@
       return places;
     }
 
-    async function driveTimeArea(latlng, minutes) {
-      const key = isochroneKey(latlng, minutes);
+    async function travelTimeArea(latlng, minutes, mode) {
+      const key = isochroneKey(latlng, minutes, mode);
       const cached = readIsochrone(key);
       if (cached) return cached;
 
       await throttle('valhalla');
       const query = {
         locations: [{ lat: latlng[0], lon: latlng[1] }],
-        costing: 'auto',
+        costing: mode,
         contours: [{ time: minutes }],
         polygons: true
       };
@@ -541,6 +559,7 @@
       const places = rows().map((row) => ({
         text: row.querySelector('.address').value,
         minutes: row.querySelector('.minutes').value,
+        mode: row.querySelector('.mode').value,
         selection: row._selection
       }));
       try {
@@ -569,6 +588,9 @@
       return {
         text: text,
         minutes: Number.isFinite(minutes) && minutes >= 1 && minutes <= MAX_MINUTES ? minutes : 15,
+        // Lists saved before there was a picker have no mode, which is not a
+        // shape this can't read: an absent one drives, as it always did.
+        mode: knownMode(entry.mode),
         selection: usable ? {
           latlng: selection.latlng,
           label: selection.label,
@@ -603,7 +625,7 @@
         // Keep at least one row: nothing to remove down to.
         row.querySelector('.remove').disabled = busy || all.length === 1;
         // Editing mid-run would invalidate a selection the loop is still using.
-        row.querySelectorAll('input').forEach((input) => { input.disabled = busy; });
+        row.querySelectorAll('input, select').forEach((field) => { field.disabled = busy; });
       });
       addButton.disabled = busy || all.length >= COLOURS.length;
       save();
@@ -620,7 +642,10 @@
                'autocomplete="off" role="combobox" aria-autocomplete="list" ' +
                'aria-expanded="false" aria-controls="' + id + '" aria-label="Address or postcode">' +
         '<input class="minutes" type="number" min="1" max="' + MAX_MINUTES + '" ' +
-               'step="1" value="15" aria-label="Drive time in minutes">' +
+               'step="1" value="15" aria-label="Travel time in minutes">' +
+        '<select class="mode" aria-label="Travel mode">' +
+          MODES.map((mode) => '<option value="' + mode.value + '">' + mode.label + '</option>').join('') +
+        '</select>' +
         '<button class="remove" type="button" title="Remove place" ' +
                'aria-label="Remove place">&times;</button>' +
         '<ul class="suggestions" id="' + id + '" role="listbox" hidden></ul>';
@@ -631,6 +656,8 @@
         if (event.key === 'Enter' && !busy) run();
       });
       minutesInput.addEventListener('input', save);
+      const modeInput = row.querySelector('.mode');
+      modeInput.addEventListener('change', save);
 
       if (saved) {
         // Assigned directly: dispatching `input` would clear the selection and
@@ -638,6 +665,7 @@
         const address = row.querySelector('.address');
         address.value = saved.text;
         minutesInput.value = saved.minutes;
+        modeInput.value = saved.mode;
         row._selection = saved.selection;
         if (saved.selection) address.title = saved.selection.label;
       }
@@ -703,6 +731,7 @@
           // Snapshot now: the loop must not read a selection that later edits change.
           selection: row._selection,
           minutes: row.querySelector('.minutes').valueAsNumber,
+          mode: row.querySelector('.mode').value,
           colour: COLOURS[i]
         };
       }).filter((entry) => entry.text !== '');   // blank rows are ignored
@@ -759,8 +788,9 @@
             setStatus(label + 'finding ' + entry.text + '…');
             const place = await resolve(entry);
 
-            setStatus(label + 'calculating ' + entry.minutes + ' min drive time…');
-            const geometry = await driveTimeArea(place.latlng, entry.minutes);
+            setStatus(label + 'calculating ' + entry.minutes + ' min ' +
+                      modeVerb(entry.mode) + ' time…');
+            const geometry = await travelTimeArea(place.latlng, entry.minutes, entry.mode);
             geometries.push(geometry);
 
             const area = draw(L.geoJSON({ type: 'Feature', geometry: geometry, properties: {} }, {
@@ -773,7 +803,8 @@
             draw(L.circleMarker(place.latlng, {
               radius: 6, color: '#fff', weight: 2, opacity: 1,
               fillColor: entry.colour, fillOpacity: 1
-            })).bindPopup(entry.minutes + ' min from ' + place.label);
+            })).bindPopup(entry.minutes + ' min ' + modeVerb(entry.mode) +
+                          ' from ' + place.label);
           } catch (error) {
             entry.row.classList.add('failed');
             failures.push(entry.text + ' (' + error.message + ')');
@@ -798,7 +829,8 @@
                     ' drawn. Failed: ' + failures.join('; ') +
                     (entries.length > 1 ? '. No overlap shown.' : ''), true);
         } else if (geometries.length < 2) {
-          setStatus(entries[0].minutes + ' min drive from ' + entries[0].input.value + '.');
+          setStatus(entries[0].minutes + ' min ' + modeVerb(entries[0].mode) +
+                    ' from ' + entries[0].input.value + '.');
         } else if (overlap) {
           setStatus('Overlap of all ' + geometries.length + ' areas shown in yellow.');
         } else {
