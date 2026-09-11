@@ -66,7 +66,7 @@
     }
 
     .nav-container {
-      max-width: 1040px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 12px 24px;
       display: flex;
@@ -132,7 +132,7 @@
     }
 
     main {
-      max-width: 1040px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 40px 24px 80px;
     }
@@ -159,7 +159,7 @@
 
     .hero-logo-wrapper {
       margin-bottom: 24px;
-      display: inline-block;
+      display: block;
     }
 
     .hero-logo {
@@ -601,6 +601,83 @@
       }
       .secondary-section {
         padding: 32px 18px;
+      }
+    }
+
+    /* ---- Desktop refinements (min-width, so the mobile rules above are untouched) ---- */
+    @media (min-width: 900px) {
+      /* Pin column counts so cards never leave an orphan on the last row. */
+      .steps-grid,
+      .secondary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .benefits-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-block {
+        padding-top: 64px;
+      }
+    }
+
+    /* Wide enough for the hero to run as two columns: copy on the left, brand
+       card on the right, instead of one tall centred stack. Below this the
+       centred stack still reads better than a squeezed text column. */
+    @media (min-width: 1080px) {
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+        column-gap: 56px;
+        align-items: center;
+        text-align: left;
+        padding: 48px 0 56px;
+      }
+
+      .hero > *:not(.hero-logo-wrapper) {
+        grid-column: 1;
+      }
+
+      /* Grid items stretch by default; keep the pill at its content width. */
+      .hero-badge {
+        justify-self: start;
+      }
+
+      .hero-logo-wrapper {
+        grid-column: 2;
+        /* Deliberate over-span: every other child is pinned to column 1, so
+           this stays correct however many rows the copy column grows to. */
+        grid-row: 1 / span 20;
+        align-self: center;
+        margin-bottom: 0;
+      }
+
+      .hero-logo {
+        max-width: 100%;
+      }
+
+      .hero h1 {
+        font-size: clamp(2.5rem, 3.6vw, 3.1rem);
+      }
+
+      .hero p.lead {
+        margin: 0 0 32px;
+        max-width: 560px;
+      }
+
+      .cta-group {
+        justify-content: flex-start;
+      }
+
+      .hero-proof-list {
+        justify-content: flex-start;
+        gap: 10px 22px;
+      }
+    }
+
+    @media (min-width: 1200px) {
+      .benefits-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
     }
   </style>
