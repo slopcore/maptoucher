@@ -609,20 +609,23 @@
           crossorigin=""></script>
   <script>
     // The public FOSSGIS Valhalla instance caps isochrones at 60 minutes, for
-    // every costing model it offers.
+    // every costing model it offers. Transit comes from elsewhere but is held
+    // to the same ceiling: one limit is easier to explain than two, and a
+    // 60-minute transit area is already most of a city region.
     const MAX_MINUTES = 60;
     // Valhalla costing models, in the order the picker offers them. The value
     // goes to the API and into the cache key; the verb goes on screen.
     const MODES = [
       { value: 'auto', label: 'Drive', verb: 'drive' },
-      { value: 'pedestrian', label: 'Walk', verb: 'walk' }
+      { value: 'pedestrian', label: 'Walk', verb: 'walk' },
+      { value: 'transit', label: 'Transit', verb: 'transit', transit: true }
     ];
     // One colour per place; the list is capped at this many so every place
     // keeps a distinct colour.
     const COLOURS = ['#3388ff', '#e6550d', '#31a354', '#756bb1', '#e7298a', '#00868b'];
     // Courtesy gaps between requests we make in a batch. Typeahead is not
     // throttled this way — it is debounced and cancelled instead.
-    const GAPS = { photon: 300, valhalla: 400 };
+    const GAPS = { photon: 300, valhalla: 400, motis: 1000 };
     const MIN_QUERY = 3;
     const DEBOUNCE_MS = 300;
     // Bump the version when the stored shape changes; a mismatch is discarded
@@ -643,8 +646,18 @@
       return MODES.some((mode) => mode.value === value) ? value : MODES[0].value;
     }
 
+    function modeConfig(value) {
+      return MODES.find((mode) => mode.value === knownMode(value));
+    }
+
     function modeVerb(value) {
-      return MODES.find((mode) => mode.value === knownMode(value)).verb;
+      return modeConfig(value).verb;
+    }
+
+    // "30 min transit" is not an answer on its own — it depends on when you
+    // leave. Drive and walk need no such qualifier.
+    function modeQualifier(value) {
+      return modeConfig(value).transit ? ' (leaving ' + departureSlot().label + ')' : '';
     }
 
     const map = L.map('map', {
@@ -655,7 +668,8 @@
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | ' +
                    'Search by <a href="https://photon.komoot.io/">Photon</a> | ' +
-                   'Routing by <a href="https://valhalla.openstreetmap.de/">Valhalla</a> (FOSSGIS)'
+                   'Routing by <a href="https://valhalla.openstreetmap.de/">Valhalla</a> (FOSSGIS) | ' +
+                   'Transit by <a href="https://transitous.org/">Transitous</a> (MOTIS)'
     }).addTo(map);
 
     const placesEl = document.getElementById('places');
@@ -886,8 +900,9 @@
       return value;
     }
 
-    function isochroneKey(latlng, minutes, mode) {
-      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|' + mode;
+    function isochroneKey(latlng, minutes, mode, slot) {
+      return latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) + '|' + minutes + '|' + mode +
+             (slot ? '|' + slot : '');
     }
 
     function usableGeometry(geometry) {
@@ -1079,15 +1094,11 @@
       return fallback;
     }
 
-    async function travelTimeArea(latlng, minutes, mode) {
-      const key = isochroneKey(latlng, minutes, mode);
-      const cached = readIsochrone(key);
-      if (cached) return cached;
-
+    async function valhallaArea(latlng, minutes, costing) {
       await throttle('valhalla');
       const query = {
         locations: [{ lat: latlng[0], lon: latlng[1] }],
-        costing: mode,
+        costing: costing,
         contours: [{ time: minutes }],
         polygons: true
       };
@@ -1099,8 +1110,305 @@
       if (!collection.features || !collection.features.length) {
         throw new Error('no drive-time area returned');
       }
+      return collection.features[0].geometry;
+    }
 
-      const geometry = collection.features[0].geometry;
+    /* ---- public transport areas ---- */
+
+    // Valhalla's own `multimodal` costing is not an option here: the public
+    // FOSSGIS tiles carry no GTFS feeds, so it silently answers with a walking
+    // area (measurably the same as `pedestrian`). Transit times come from
+    // Transitous instead, a free MOTIS instance with worldwide GTFS coverage.
+    //
+    // MOTIS answers "which stops can I reach, and how long does each take" —
+    // a list of points, not an area. The area is built here: every reachable
+    // stop leaves a walk budget behind it, and the reachable region is the
+    // union of what those budgets cover. That union is computed on a grid
+    // rather than by clipping thousands of circles together, because central
+    // London at 60 minutes reaches ~32,000 stops and polygon clipping that
+    // many overlapping discs is both slow and prone to failing outright.
+    const MOTIS_URL = 'https://api.transitous.org/api/v1/one-to-all';
+    // Metres per minute on foot, calibrated so a transit area's egress walk
+    // matches this app's own Walk mode: Valhalla's 30-minute pedestrian
+    // isochrone in central London covers 14.1 km², an equal-area radius of
+    // 2,121 m, or ~70 m/min. Straight-line 5 km/h (83 m/min) ignores the
+    // detour every real street network imposes and overstates the reach.
+    const WALK_M_PER_MIN = 70;
+    // Grid resolution scales with the budget so the grid stays a similar size
+    // whatever is asked, and is capped so a wide area can't allocate an
+    // unbounded one.
+    const TRANSIT_MAX_CELLS = 400000;
+
+    // Transit times depend on when you leave, so an area is only meaningful
+    // alongside a departure. This app is for finding somewhere to live, so the
+    // question is the weekday commute: the next weekday at 08:00 local. The
+    // slot is normalised to a single string so the same run reuses a cached
+    // area and a different day never quietly reuses one.
+    function departureSlot() {
+      const when = new Date();
+      when.setHours(8, 0, 0, 0);
+      // Past 08:00, or on a weekend, the useful answer is the next weekday.
+      if (when.getTime() <= Date.now()) when.setDate(when.getDate() + 1);
+      while (when.getDay() === 0 || when.getDay() === 6) {
+        when.setDate(when.getDate() + 1);
+      }
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        // MOTIS takes an instant; send the local 08:00 as a real offset rather
+        // than pretending it is UTC.
+        iso: when.toISOString(),
+        key: when.getFullYear() + '-' + pad(when.getMonth() + 1) + '-' + pad(when.getDate()) + 'T08:00',
+        label: when.toLocaleDateString(undefined, { weekday: 'long' }) + ' 08:00'
+      };
+    }
+
+    // Signed area of a ring, in whatever units it is expressed in. The sign
+    // gives winding; the magnitude ranks rings when working out nesting.
+    function ringArea(ring) {
+      let sum = 0;
+      for (let i = 0; i < ring.length - 1; i++) {
+        sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      }
+      return sum / 2;
+    }
+
+    function pointInRing(point, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 2; i < ring.length - 1; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        if ((yi > point[1]) !== (yj > point[1]) &&
+            point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    // Marching squares over the reachability field. Cells above the threshold
+    // are inside; the contour is walked out as unordered segments and stitched
+    // into closed rings afterwards.
+    const MARCHING_EDGES = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    const MARCHING_CASES = {
+      1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 6: [[0, 2]], 7: [[3, 2]],
+      8: [[2, 3]], 9: [[2, 0]], 11: [[2, 1]], 12: [[1, 3]], 13: [[1, 0]], 14: [[0, 3]],
+      5: [[3, 0], [1, 2]], 10: [[0, 1], [2, 3]]
+    };
+
+    function contourRings(field, width, height) {
+      const segments = [];
+      const corners = [[0, 0], [1, 0], [1, 1], [0, 1]];
+      for (let j = 0; j < height - 1; j++) {
+        for (let i = 0; i < width - 1; i++) {
+          const values = [
+            field[j * width + i], field[j * width + i + 1],
+            field[(j + 1) * width + i + 1], field[(j + 1) * width + i]
+          ];
+          let code = 0;
+          for (let k = 0; k < 4; k++) if (values[k] > 0) code |= (1 << k);
+          if (code === 0 || code === 15) continue;
+          const at = (edge) => {
+            const [a, b] = MARCHING_EDGES[edge];
+            const va = values[a], vb = values[b];
+            // Interpolating along the edge puts the boundary where the walk
+            // budget actually runs out, instead of on the cell corner.
+            const t = va === vb ? 0.5 : va / (va - vb);
+            return [
+              i + corners[a][0] + (corners[b][0] - corners[a][0]) * t,
+              j + corners[a][1] + (corners[b][1] - corners[a][1]) * t
+            ];
+          };
+          for (const [from, to] of MARCHING_CASES[code]) {
+            segments.push([at(from), at(to)]);
+          }
+        }
+      }
+
+      // Stitch: index every segment by its start point, then follow the chain
+      // from each unused segment until it closes.
+      const keyOf = (point) => point[0].toFixed(4) + ',' + point[1].toFixed(4);
+      const starts = new Map();
+      segments.forEach((segment, index) => {
+        const key = keyOf(segment[0]);
+        if (!starts.has(key)) starts.set(key, []);
+        starts.get(key).push(index);
+      });
+
+      const used = new Array(segments.length).fill(false);
+      const rings = [];
+      for (let start = 0; start < segments.length; start++) {
+        if (used[start]) continue;
+        used[start] = true;
+        const ring = [segments[start][0], segments[start][1]];
+        let cursor = segments[start][1];
+        // A ring can't be longer than the segment list; the bound stops a
+        // malformed chain from spinning forever.
+        for (let step = 0; step < segments.length; step++) {
+          const candidates = starts.get(keyOf(cursor));
+          if (!candidates) break;
+          const next = candidates.find((index) => !used[index]);
+          if (next === undefined) break;
+          used[next] = true;
+          cursor = segments[next][1];
+          ring.push(cursor);
+        }
+        // Close it, and drop slivers that can't enclose anything.
+        if (ring.length < 4) continue;
+        ring.push(ring[0].slice());
+        rings.push(ring);
+      }
+      return rings;
+    }
+
+    // Rings come out of marching squares unordered and with no marking of
+    // which are holes. Nesting depth decides: a ring inside an odd number of
+    // others is a hole, and belongs to the smallest ring containing it.
+    function ringsToPolygons(rings) {
+      const described = rings.map((ring) => ({
+        ring: ring,
+        area: Math.abs(ringArea(ring)),
+        signed: ringArea(ring)
+      })).filter((item) => item.area > 0);
+      described.sort((a, b) => b.area - a.area);
+
+      const outers = [];
+      described.forEach((item, index) => {
+        let depth = 0;
+        let parent = null;
+        for (let other = 0; other < index; other++) {
+          if (pointInRing(item.ring[0], described[other].ring)) {
+            depth++;
+            // `described` is sorted large to small, so the last container
+            // found is the smallest one.
+            parent = described[other];
+          }
+        }
+        item.isHole = depth % 2 === 1;
+        item.parent = parent;
+        if (!item.isHole) {
+          item.holes = [];
+          outers.push(item);
+        } else if (parent && parent.holes) {
+          parent.holes.push(item);
+        }
+      });
+
+      // GeoJSON wants outer rings counter-clockwise and holes clockwise.
+      const wound = (ring, wantPositive) => {
+        const copy = ring.slice();
+        if ((ringArea(ring) > 0) !== wantPositive) copy.reverse();
+        return copy;
+      };
+      return outers.map((outer) => [wound(outer.ring, true)]
+        .concat(outer.holes.map((hole) => wound(hole.ring, false))));
+    }
+
+    async function transitArea(latlng, minutes, slot) {
+      await throttle('motis');
+      const url = MOTIS_URL +
+                  '?one=' + latlng[0].toFixed(5) + ',' + latlng[1].toFixed(5) +
+                  '&time=' + encodeURIComponent(slot.iso) +
+                  '&maxTravelTime=' + minutes +
+                  '&arriveBy=false';
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await readError(response));
+
+      const payload = await response.json();
+      const reachable = (payload && payload.all ? payload.all : []).filter(
+        (item) => item.place && typeof item.place.lat === 'number' &&
+                  typeof item.duration === 'number' && item.duration < minutes
+      );
+      if (!reachable.length) throw new Error('no transit service found near there');
+
+      // Work in metres on a local equirectangular grid: over one city the
+      // distortion is far below the resolution of the grid itself.
+      const metresPerDegLat = 111320;
+      const metresPerDegLon = 111320 * Math.cos(latlng[0] * Math.PI / 180);
+      const points = reachable.map((item) => ({
+        x: (item.place.lon - latlng[1]) * metresPerDegLon,
+        y: (item.place.lat - latlng[0]) * metresPerDegLat,
+        remaining: minutes - item.duration
+      }));
+      // The origin is reachable in zero minutes, so it carries the full budget.
+      points.push({ x: 0, y: 0, remaining: minutes });
+
+      const longestWalk = Math.max(...points.map((p) => p.remaining)) * WALK_M_PER_MIN;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) {
+        const reach = p.remaining * WALK_M_PER_MIN;
+        minX = Math.min(minX, p.x - reach); maxX = Math.max(maxX, p.x + reach);
+        minY = Math.min(minY, p.y - reach); maxY = Math.max(maxY, p.y + reach);
+      }
+
+      let resolution = Math.max(120, Math.min(300, minutes * 5));
+      let width, height;
+      // Raise the resolution until the grid fits the cell budget, so a very
+      // wide area costs no more memory than a compact one.
+      for (;;) {
+        width = Math.ceil((maxX - minX) / resolution) + 3;
+        height = Math.ceil((maxY - minY) / resolution) + 3;
+        if (width * height <= TRANSIT_MAX_CELLS) break;
+        resolution *= 1.5;
+      }
+
+      // Each cell holds the walk budget still unspent on arriving there, taking
+      // the best of every stop that reaches it. Positive means reachable, so
+      // the contour at zero is the edge of the area.
+      const field = new Float32Array(width * height);
+      for (const p of points) {
+        const reach = p.remaining * WALK_M_PER_MIN;
+        const cells = Math.ceil(reach / resolution) + 1;
+        const centreI = Math.round((p.x - minX) / resolution);
+        const centreJ = Math.round((p.y - minY) / resolution);
+        const fromJ = Math.max(0, centreJ - cells), toJ = Math.min(height - 1, centreJ + cells);
+        const fromI = Math.max(0, centreI - cells), toI = Math.min(width - 1, centreI + cells);
+        for (let j = fromJ; j <= toJ; j++) {
+          const dy = (minY + j * resolution) - p.y;
+          for (let i = fromI; i <= toI; i++) {
+            const dx = (minX + i * resolution) - p.x;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > reach) continue;
+            const left = p.remaining - distance / WALK_M_PER_MIN;
+            if (left > field[j * width + i]) field[j * width + i] = left;
+          }
+        }
+      }
+
+      const rings = contourRings(field, width, height).map((ring) => ring.map((point) => [
+        // Back to lon/lat, rounded to the ~1 m that the grid can justify.
+        Number((latlng[1] + (minX + point[0] * resolution) / metresPerDegLon).toFixed(5)),
+        Number((latlng[0] + (minY + point[1] * resolution) / metresPerDegLat).toFixed(5))
+      ]));
+      const polygons = ringsToPolygons(rings);
+      if (!polygons.length) throw new Error('no transit area could be drawn');
+
+      let coordinates = polygons;
+      // Near the origin the grid is coarser than the streets, so borrow the
+      // real walking area for the same budget. It costs one more request and
+      // it is the part of the map a user looks at hardest.
+      try {
+        const onFoot = await valhallaArea(latlng, minutes, 'pedestrian');
+        coordinates = polygonClipping.union(coordinates, onFoot.coordinates);
+      } catch (e) { /* the transit area alone is still a fair answer */ }
+
+      return { type: 'MultiPolygon', coordinates: coordinates };
+    }
+
+    // The one entry point the run loop uses, whichever service answers.
+    async function travelTimeArea(latlng, minutes, mode) {
+      const config = modeConfig(mode);
+      // Only transit depends on when you leave, so only transit puts a
+      // departure in its cache key — drive and walk keep the keys they had.
+      const slot = config.transit ? departureSlot() : null;
+      const key = isochroneKey(latlng, minutes, config.value, slot && slot.key);
+      const cached = readIsochrone(key);
+      if (cached) return cached;
+
+      const geometry = config.transit
+        ? await transitArea(latlng, minutes, slot)
+        : await valhallaArea(latlng, minutes, config.value);
+      if (!usableGeometry(geometry)) throw new Error('no area returned');
+
       writeIsochrone(key, geometry);
       return geometry;
     }
@@ -1633,7 +1941,8 @@
             const place = await resolve(entry);
 
             setStatus(label + 'calculating ' + entry.minutes + ' min ' +
-                      modeVerb(entry.mode) + ' time…');
+                      modeVerb(entry.mode) + ' time' +
+                      (modeConfig(entry.mode).transit ? ' (reading timetables)' : '') + '…');
             const geometry = await travelTimeArea(place.latlng, entry.minutes, entry.mode);
             geometries.push(geometry);
 
@@ -1648,7 +1957,7 @@
               radius: 6, color: '#fff', weight: 2, opacity: 1,
               fillColor: entry.colour, fillOpacity: 1
             }).bindPopup(entry.minutes + ' min ' + modeVerb(entry.mode) +
-                          ' from ' + place.label);
+                          ' from ' + place.label + modeQualifier(entry.mode));
 
             entry.row._layers = { area: area, marker: marker };
             entry.row._geometry = geometry;
@@ -1684,7 +1993,7 @@
                     (entries.length > 1 ? '. No overlap shown.' : ''), true);
         } else if (geometries.length < 2) {
           setStatus(entries[0].minutes + ' min ' + modeVerb(entries[0].mode) +
-                    ' from ' + entries[0].input.value + '.');
+                    ' from ' + entries[0].input.value + modeQualifier(entries[0].mode) + '.');
         } else if (overlap) {
           setStatus(spotlightMode
             ? 'Spotlight on overlap of all ' + geometries.length + ' areas (roads and labels clear).'
