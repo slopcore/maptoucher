@@ -685,6 +685,26 @@
       text-decoration: underline;
     }
 
+    .kofi-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 18px;
+      padding: 8px 16px;
+      border: 1px solid var(--accent-yellow-border);
+      background: var(--accent-yellow-bg);
+      border-radius: 999px;
+      color: var(--accent-yellow);
+      font-weight: 600;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .kofi-link:hover {
+      background: #fef9c3;
+      border-color: var(--accent-yellow);
+      text-decoration: none;
+    }
+
     @media (max-width: 768px) {
       .nav-links {
         display: none;
@@ -1048,6 +1068,9 @@
   </main>
 
   <footer>
+    <a href="https://ko-fi.com/meatpaste" class="kofi-link" target="_blank" rel="noopener">
+      <span aria-hidden="true">☕</span> Buy me a coffee on Ko-fi
+    </a>
     <p>
       <strong>MapToucher</strong> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
       Routing by <a href="https://valhalla.openstreetmap.de/" target="_blank" rel="noopener">Valhalla (FOSSGIS)</a>.

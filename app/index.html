@@ -89,6 +89,22 @@
       color: #2563eb;
     }
 
+    .brand-support {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #64748b;
+      text-decoration: none;
+      font-weight: 500;
+      padding-left: 8px;
+      border-left: 1px solid #e2e8f0;
+      transition: color 0.15s ease;
+    }
+    .brand-support:hover {
+      color: #ca8a04;
+    }
+
     /* ---- PWA Install Button (Top Right) ---- */
     #pwa-install-btn {
       position: absolute;
@@ -531,6 +547,9 @@
       .leaflet-top.leaflet-left {
         top: 54px;
       }
+      .brand-support-text {
+        display: none;
+      }
     }
   </style>
 </head>
@@ -544,6 +563,10 @@
       <span>MapToucher</span>
     </a>
     <a href="../" class="brand-about">About</a>
+    <a href="https://ko-fi.com/meatpaste" class="brand-support" target="_blank" rel="noopener"
+       aria-label="Support MapToucher on Ko-fi" title="Support MapToucher on Ko-fi">
+      <span aria-hidden="true">☕</span><span class="brand-support-text">Support</span>
+    </a>
   </div>
 
   <!-- PWA Install Button (Top Right) -->
