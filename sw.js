@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maptoucher-v10';
+const CACHE_NAME = 'maptoucher-v11';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -37,8 +37,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // For routing and geocoding APIs, use network only
-  if (url.origin.includes('photon.komoot.io') || url.origin.includes('valhalla')) {
+  // For routing, geocoding and transit APIs, use network only. A transit
+  // answer depends on the timetable in force and on when you leave, so it is
+  // the last thing that should ever come back from a cache.
+  if (url.origin.includes('photon.komoot.io') || url.origin.includes('valhalla') ||
+      url.origin.includes('transitous.org')) {
     return;
   }
 
