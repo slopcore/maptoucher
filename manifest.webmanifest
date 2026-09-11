@@ -1,7 +1,7 @@
 {
   "name": "MapToucher",
   "short_name": "MapToucher",
-  "description": "Commute-based property search & area finder. Calculate travel-time overlaps to find the ideal neighbourhood to live, or find fair spots to meet.",
+  "description": "Commute-based location search & area finder. Calculate travel-time overlaps to find the ideal neighbourhood to live in, or find fair spots to meet.",
   "start_url": "./app/",
   "scope": "./",
   "display": "standalone",
