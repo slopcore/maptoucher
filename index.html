@@ -164,6 +164,10 @@
       max-width: 720px;
       margin-left: auto;
       margin-right: auto;
+      /* Positioning context for the phone, plus room for it to hang below the
+         browser frame without the hero clipping it. */
+      position: relative;
+      padding-bottom: 30px;
     }
 
     .hero-preview-link {
@@ -227,6 +231,57 @@
       display: block;
       aspect-ratio: 1280 / 800;
       object-fit: cover;
+    }
+
+    /* The phone sits over the bottom-left of the browser frame, showing the
+       same search on a handset. Sized in % of the frame so the pairing holds
+       its proportions at every width; `left` stays positive so it can never
+       push the hero into a horizontal scroll on a narrow screen. */
+    .preview-phone {
+      position: absolute;
+      left: 2.5%;
+      bottom: 0;
+      width: 23%;
+      max-width: 152px;
+      background: #0f172a;
+      border-radius: 20px;
+      padding: 11px 5px 6px;
+      box-shadow: 0 18px 34px -10px rgba(15, 23, 42, 0.5),
+                  0 0 0 1px rgba(15, 23, 42, 0.14);
+      transition: transform 0.2s ease;
+    }
+
+    /* Earpiece speaker, on the bezel rather than over the screen so it does
+       not cover the app's own header. */
+    .preview-phone::before {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 24%;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .preview-phone-screen {
+      display: block;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    .preview-phone-img {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 480 / 1038;
+      object-fit: cover;
+    }
+
+    .hero-preview-link:hover .preview-phone {
+      transform: translateY(-3px);
     }
 
     .hero h1 {
@@ -805,9 +860,17 @@
               <span class="browser-address">maptoucher.app</span>
             </div>
             <picture>
-              <source srcset="app-preview.webp" type="image/webp">
-              <img src="app-preview.jpeg" alt="MapToucher app interface in action showing commute travel time overlap and golden intersection zone" class="hero-preview-img" width="1280" height="800" loading="eager">
+              <source srcset="app-preview-transit.webp" type="image/webp">
+              <img src="app-preview-transit.jpeg" alt="MapToucher on a desktop browser: a 35-minute public transport area and a 30-minute drive area across London, with the golden overlap zone where both commutes work" class="hero-preview-img" width="1280" height="800" loading="eager">
             </picture>
+          </div>
+          <div class="preview-phone">
+            <span class="preview-phone-screen">
+              <picture>
+                <source srcset="app-preview-mobile.webp" type="image/webp">
+                <img src="app-preview-mobile.jpeg" alt="The same commute overlap on a phone" class="preview-phone-img" width="480" height="1038" loading="eager">
+              </picture>
+            </span>
           </div>
         </a>
       </div>
