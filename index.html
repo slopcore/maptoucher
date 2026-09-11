@@ -157,19 +157,76 @@
       margin-bottom: 22px;
     }
 
-    .hero-logo-wrapper {
-      margin-bottom: 24px;
+    .hero-preview-wrapper {
+      margin-top: 36px;
       display: block;
+      width: 100%;
+      max-width: 720px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
-    .hero-logo {
-      width: 100%;
-      max-width: 340px;
-      height: auto;
+    .hero-preview-link {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .preview-browser-frame {
+      background: #ffffff;
       border-radius: var(--radius);
-      box-shadow: var(--shadow-lg);
+      box-shadow: var(--shadow-lg), 0 20px 40px -15px rgba(15, 23, 42, 0.15);
       border: 1px solid var(--border);
-      background: #fff;
+      overflow: hidden;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .hero-preview-link:hover .preview-browser-frame {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg), 0 24px 48px -10px rgba(37, 99, 235, 0.2);
+    }
+
+    .browser-header {
+      background: #f8fafc;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .browser-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .browser-dot.red { background: #ef4444; }
+    .browser-dot.yellow { background: #eab308; }
+    .browser-dot.green { background: #22c55e; }
+
+    .browser-address {
+      margin-left: 8px;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 12px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      max-width: 180px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hero-preview-img {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 1280 / 800;
+      object-fit: cover;
     }
 
     .hero h1 {
@@ -627,14 +684,14 @@
     @media (min-width: 1080px) {
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-        column-gap: 56px;
+        grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+        column-gap: 48px;
         align-items: center;
         text-align: left;
         padding: 48px 0 56px;
       }
 
-      .hero > *:not(.hero-logo-wrapper) {
+      .hero > *:not(.hero-preview-wrapper) {
         grid-column: 1;
       }
 
@@ -643,16 +700,13 @@
         justify-self: start;
       }
 
-      .hero-logo-wrapper {
+      .hero-preview-wrapper {
         grid-column: 2;
         /* Deliberate over-span: every other child is pinned to column 1, so
            this stays correct however many rows the copy column grows to. */
         grid-row: 1 / span 20;
         align-self: center;
-        margin-bottom: 0;
-      }
-
-      .hero-logo {
+        margin: 0;
         max-width: 100%;
       }
 
@@ -706,12 +760,9 @@
       <div class="hero-badge">
         <span>🏡</span> Commute-Smart Location Search
       </div>
-      <div class="hero-logo-wrapper">
-        <img src="maptoucher-logo.jpeg" alt="MapToucher" class="hero-logo">
-      </div>
       <h1>Find where to live based on <span class="highlight">all your commutes</span>.</h1>
       <p class="lead">
-        House hunting with a partner, family, or housemates? MapToucher calculates realistic driving and walking times from both workplaces, schools, and frequent destinations — showing you the areas where nobody gets stuck with an unfair journey. It doesn't search listings; it tells you where to search them.
+        House hunting with a partner, family, or housemates? MapToucher calculates realistic driving and walking travel times from everyone's workplaces, schools, and daily destinations — highlighting the sweet spot where everyone has a fair journey and mapping the ideal areas for your search.
       </p>
       <div class="cta-group">
         <a href="app/" class="btn-primary">
@@ -735,7 +786,7 @@
           <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
           </svg>
-          Real road network times (not radial circles)
+          True road network travel times
         </div>
         <div class="hero-proof-item">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
@@ -744,6 +795,22 @@
           100% Free & private
         </div>
       </div>
+      <div class="hero-preview-wrapper">
+        <a href="app/" class="hero-preview-link" title="Open MapToucher App">
+          <div class="preview-browser-frame">
+            <div class="browser-header">
+              <span class="browser-dot red"></span>
+              <span class="browser-dot yellow"></span>
+              <span class="browser-dot green"></span>
+              <span class="browser-address">maptoucher.app</span>
+            </div>
+            <picture>
+              <source srcset="app-preview.webp" type="image/webp">
+              <img src="app-preview.jpeg" alt="MapToucher app interface in action showing commute travel time overlap and golden intersection zone" class="hero-preview-img" width="1280" height="800" loading="eager">
+            </picture>
+          </div>
+        </a>
+      </div>
     </section>
 
     <!-- Property Search Focus: Problem vs Solution -->
@@ -751,27 +818,27 @@
       <div class="section-title">
         <span class="section-tag">Target Your House Hunt</span>
         <h2>The smarter way to choose where to buy or rent</h2>
-        <p>Property sites are built to search listings, not to balance two or more commutes. MapToucher works out the area first, so you know where to draw the search box when you get there.</p>
+        <p>Narrow down your search area before browsing property listings. MapToucher balances all your household commutes simultaneously, showing you where to focus your search on property portals.</p>
       </div>
 
       <div class="prop-contrast-grid">
         <div class="contrast-card problem">
           <div class="contrast-header">
-            <span class="contrast-icon">❌</span>
-            <h3>The Portal Search Struggle</h3>
+            <span class="contrast-icon">📍</span>
+            <h3>The Multi-Commute Challenge</h3>
           </div>
           <ul>
             <li>
               <span class="bullet">&times;</span>
-              <span><strong>Single-location bias:</strong> Portals force you to search within a radius of one postcode, neglecting your partner's or housemates' commutes.</span>
+              <span><strong>Single-location searches:</strong> Searching around a single postcode leaves partners or housemates with an unbalanced commute.</span>
             </li>
             <li>
               <span class="bullet">&times;</span>
-              <span><strong>Crude radius circles:</strong> As-the-crow-flies circles ignore winding roads, rivers, bottlenecks, and real highway access.</span>
+              <span><strong>Simple radius circles:</strong> Straight-line radius circles overlook winding roads, rivers, bridges, and real travel times.</span>
             </li>
             <li>
               <span class="bullet">&times;</span>
-              <span><strong>Endless tab switching:</strong> Checking commute durations manually on Google Maps for every single listing wastes hours.</span>
+              <span><strong>Listing-by-listing checks:</strong> Manually checking journey times for every property on map apps takes hours.</span>
             </li>
           </ul>
         </div>
@@ -779,20 +846,20 @@
         <div class="contrast-card solution">
           <div class="contrast-header">
             <span class="contrast-icon">✨</span>
-            <h3>The MapToucher Approach</h3>
+            <h3>The MapToucher Advantage</h3>
           </div>
           <ul>
             <li>
               <span class="bullet">&#10003;</span>
-              <span><strong>Simultaneous commute limits:</strong> Add up to 6 locations (e.g. Work A, Work B, School) with customized travel time budgets.</span>
+              <span><strong>Multi-commute overlap:</strong> Add up to 6 locations (workplaces, schools, transit hubs) with customized travel time limits.</span>
             </li>
             <li>
               <span class="bullet">&#10003;</span>
-              <span><strong>True road-network isochrones:</strong> Calculates genuine driving and walking contours based on actual road networks and speed limits.</span>
+              <span><strong>Road-network isochrones:</strong> Calculates realistic driving and walking contours based on actual road networks and speed limits.</span>
             </li>
             <li>
               <span class="bullet">&#10003;</span>
-              <span><strong>The Golden Zone:</strong> Shows the overlapping area where you should draw your search on Rightmove, Zoopla, or Zillow.</span>
+              <span><strong>The Golden Zone:</strong> Illuminates the overlapping area where you can focus your search on Rightmove, Zoopla, or Zillow.</span>
             </li>
           </ul>
         </div>
@@ -828,7 +895,7 @@
           <div class="step-number">3</div>
           <h3>Uncover your search sweet spot</h3>
           <p>
-            MapToucher calculates genuine travel contours and illuminates the golden overlap zone where any home meets everyone's commute requirements.
+            MapToucher calculates realistic travel contours and illuminates the golden overlap zone where travel times work for everyone.
           </p>
           <div class="highlight-badge">
             Target this zone on property portals
@@ -837,11 +904,11 @@
       </div>
     </section>
 
-    <!-- Secondary Use Cases Section -->
+    <!-- Everyday Use Cases Section -->
     <section class="secondary-section" id="other-uses">
       <div class="section-title">
-        <span class="section-tag">Secondary Use Cases</span>
-        <h2>Not just for house hunting &mdash; also great for:</h2>
+        <span class="section-tag">Everyday Use Cases</span>
+        <h2>Beyond house hunting &mdash; also great for:</h2>
         <p>Any time two or more people need to find a fair middle ground, MapToucher does the heavy lifting.</p>
       </div>
 
@@ -850,7 +917,7 @@
           <span class="secondary-icon">🍻</span>
           <h4>Meeting Friends Halfway</h4>
           <p>
-            Planning dinner, drinks, or coffee with friends across town? Enter everyone's starting points to discover the fairest neighbourhoods and venues where nobody has to travel twice as far.
+            Planning dinner, drinks, or coffee with friends across town? Enter everyone's starting points to discover fair neighbourhoods where travel times are balanced.
           </p>
         </div>
 
@@ -858,7 +925,7 @@
           <span class="secondary-icon">💼</span>
           <h4>Team & Client Gatherings</h4>
           <p>
-            Organizing an in-person workshop or offsite for a distributed or hybrid team? Find central meeting rooms, coworking offices, or dinner spots equally accessible to colleagues.
+            Organizing an in-person workshop or offsite for a distributed or hybrid team? Find central areas, coworking hubs, or meeting locations equally accessible to colleagues.
           </p>
         </div>
 
@@ -866,7 +933,7 @@
           <span class="secondary-icon">🚗</span>
           <h4>Family Visits & Day Trips</h4>
           <p>
-            Coordinating a get-together with family living in different cities or counties? Pin everyone's hometown to identify midway parks, towns, or attractions for a stress-free meetup.
+            Coordinating a get-together with family living in different towns or cities? Pin everyone's starting location to identify midway towns, parks, or meeting spots for a stress-free meetup.
           </p>
         </div>
       </div>
@@ -877,14 +944,14 @@
       <div class="section-title">
         <span class="section-tag">Why It Works</span>
         <h2>Built with precision and privacy</h2>
-        <p>No compromises on accuracy, speed, or your personal data.</p>
+        <p>Designed for fast results, reliable routing, and complete personal privacy.</p>
       </div>
 
       <div class="benefits-grid">
         <div class="benefit-item">
           <span class="benefit-icon">⏱️</span>
-          <h4>Real Travel Isochrones</h4>
-          <p>Calculates true road and walking network travel times, taking account of speed limits, turns, and highway routing.</p>
+          <h4>Realistic Travel Isochrones</h4>
+          <p>Calculates driving and walking network travel contours based on actual road networks, speed profiles, and highway routing.</p>
         </div>
         <div class="benefit-item">
           <span class="benefit-icon">📍</span>
@@ -899,7 +966,7 @@
         <div class="benefit-item">
           <span class="benefit-icon">🔒</span>
           <h4>Private & Account-Free</h4>
-          <p>Your saved places stay in your browser's local storage. No accounts, no data tracking, and no search profiling.</p>
+          <p>Your saved places stay directly in your browser. Enjoy full functionality with zero sign-up required and complete privacy.</p>
         </div>
       </div>
     </section>
@@ -907,7 +974,7 @@
     <!-- Bottom Call to Action -->
     <section class="bottom-cta">
       <h2>Ready to find your ideal home search area?</h2>
-      <p>Stop guessing postcodes. Map your commutes now and discover the neighbourhoods that fit your whole household.</p>
+      <p>Map all your household commutes in seconds and discover the ideal neighbourhoods to focus your search.</p>
       <a href="app/" class="btn-primary">
         Launch MapToucher
         <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">

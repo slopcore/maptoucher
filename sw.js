@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maptoucher-v8';
+const CACHE_NAME = 'maptoucher-v10';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -8,7 +8,9 @@ const STATIC_ASSETS = [
   './maptoucher-logo.jpeg',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './app-preview.webp',
+  './app-preview.jpeg'
 ];
 
 self.addEventListener('install', (event) => {
